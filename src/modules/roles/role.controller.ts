@@ -34,7 +34,7 @@ export class RoleController {
   };
 
   create = async (
-    req: Request<Record<string, string>, any, CreateRoleDto>,
+    req: Request<Record<string, string>, unknown, CreateRoleDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -51,7 +51,7 @@ export class RoleController {
   };
 
   update = async (
-    req: Request<{ id: string }, any, UpdateRoleDto>,
+    req: Request<{ id: string }, unknown, UpdateRoleDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -83,7 +83,7 @@ export class RoleController {
   };
 
   assignPermissions = async (
-    req: Request<{ id: string }, any, AssignPermissionsDto>,
+    req: Request<{ id: string }, unknown, AssignPermissionsDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {

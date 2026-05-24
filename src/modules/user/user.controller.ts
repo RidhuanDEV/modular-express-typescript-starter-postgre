@@ -51,7 +51,7 @@ export class UserController {
   };
 
   create = async (
-    req: Request<Record<string, string>, any, CreateUserDto>,
+    req: Request<Record<string, string>, unknown, CreateUserDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -68,7 +68,7 @@ export class UserController {
   };
 
   update = async (
-    req: Request<{ id: string }, any, UpdateUserDto>,
+    req: Request<{ id: string }, unknown, UpdateUserDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {

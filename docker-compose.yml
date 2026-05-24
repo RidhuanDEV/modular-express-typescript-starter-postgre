@@ -1,9 +1,8 @@
 services:
   app:
     build: .
-    container_name: myapp_backend
     ports:
-      - "${PORT:-3000}:3000"
+      - "${APP_PORT:-3000}:3000"
     env_file:
       - .env
     environment:
@@ -11,24 +10,34 @@ services:
       - REDIS_URL=redis://redis:6379
       - IS_DOCKER=true
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     restart: unless-stopped
 
   postgres:
     image: postgres:18-alpine
-    container_name: myapp_postgres
     env_file:
       - .env
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - ./.docker/postgres_data:/var/lib/postgresql/data
+      - ./.docker/postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   redis:
     image: redis:8.0-alpine
-    container_name: myapp_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     volumes:
       - ./.docker/redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20

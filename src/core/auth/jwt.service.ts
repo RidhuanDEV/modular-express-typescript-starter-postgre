@@ -17,14 +17,14 @@ export function verifyToken(token: string): JwtUserPayload {
     "roleId" in decoded
   ) {
     if (
-      typeof decoded.id === "string" &&
-      typeof decoded.email === "string" &&
-      typeof decoded.roleId === "string"
+      typeof decoded["id"] === "string" &&
+      typeof decoded["email"] === "string" &&
+      typeof decoded["roleId"] === "string"
     ) {
       return {
-        id: decoded.id,
-        email: decoded.email,
-        roleId: decoded.roleId,
+        id: decoded["id"],
+        email: decoded["email"],
+        roleId: decoded["roleId"],
       };
     }
   }

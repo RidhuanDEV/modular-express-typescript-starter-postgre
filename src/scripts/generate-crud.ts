@@ -316,9 +316,7 @@ export class ${pascal}Repository {
         skip: options.skip,
         take: options.take,
         orderBy: options.orderBy,
-        select: options.select,
-        include: options.include,
-      }) as Promise<${pascal}[]>,
+      }),
       prisma.${camelCase(name)}.count({ where: options.where }),
     ]);
     return { rows, count };
@@ -634,12 +632,12 @@ export class ${pascal}Controller {
     next: NextFunction,
   ): Promise<void> => {
     try {
-      const pageVal = req.query.page;
-      const limitVal = req.query.limit;
-      const sortByVal = req.query.sortBy;
-      const orderByVal = req.query.orderBy;
-      const searchVal = req.query.search;
-      const fieldsVal = req.query.fields;
+      const pageVal = req.query['page'];
+      const limitVal = req.query['limit'];
+      const sortByVal = req.query['sortBy'];
+      const orderByVal = req.query['orderBy'];
+      const searchVal = req.query['search'];
+      const fieldsVal = req.query['fields'];
 
       const query: Search${pascal}Dto = {
         page: typeof pageVal === 'number' ? pageVal : Number(pageVal) || 1,
@@ -667,7 +665,7 @@ export class ${pascal}Controller {
   };
 
   create = async (
-    req: Request<Record<string, string>, any, Create${pascal}Dto>,
+    req: Request<Record<string, string>, unknown, Create${pascal}Dto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -684,7 +682,7 @@ export class ${pascal}Controller {
   };
 
   update = async (
-    req: Request<{ id: string }, any, Update${pascal}Dto>,
+    req: Request<{ id: string }, unknown, Update${pascal}Dto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -1084,7 +1082,7 @@ function main(): void {
   console.log(`\nImportant next steps:`);
   console.log(`1. Add model "${pascalCase(name)}" to your schema.prisma file manually.`);
   console.log(`2. Run "npx prisma migrate dev --name create-${name}" to update the database schema.`);
-  console.log(`3. Import the new router in src/app.ts to expose the API endpoints.\n`);
+  console.log(`3. Route loading is automatic; restart the dev server to expose the API endpoints.\n`);
 }
 
 try {

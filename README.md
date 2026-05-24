@@ -106,6 +106,7 @@ src/modules/<feature>/
 3. **Initialize Database**:
    ```bash
    npx prisma migrate dev
+   npm run seed
    ```
 
 4. **Run Development Server**:
@@ -122,7 +123,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-This will spin up the application, PostgreSQL 18, and Redis 8 automatically.
+This will spin up the application, PostgreSQL 18, and Redis 8 automatically. The app container runs `prisma migrate deploy` and the production seed before starting, creating the base `admin` and `user` roles, core permissions, and the default accounts from `ADMIN_EMAIL` / `ADMIN_PASSWORD` and `USER_EMAIL` / `USER_PASSWORD`.
 
 ## ⚡ Productivity: Modules & CRUD Generator
 
@@ -136,7 +137,7 @@ To bootstrap a new feature module in seconds:
 npm run make:crud <feature-name>
 ```
 
-The CLI generator automatically creates a complete, type-safe feature structure:
+The CLI generator automatically creates a complete, type-safe feature structure. Generated `*.routes.ts` files are auto-discovered by `src/routes/index.ts`, so restarting the dev server exposes the new API path after the Prisma model exists and the client has been regenerated.
 1. **Schema** (`<feature>.schema.ts`): Zod schemas for validating client payloads.
 2. **DTOs** (`dto/*.ts`): Strict request/response types.
 3. **Repository** (`<feature>.repository.ts`): Isolated data access interface.

@@ -12,7 +12,7 @@ const options: LoggerOptions = {
 };
 
 let usePretty = env.NODE_ENV !== "production";
-if (process.env.IS_DOCKER === "true") {
+if (process.env["IS_DOCKER"] === "true") {
   usePretty = false;
 }
 

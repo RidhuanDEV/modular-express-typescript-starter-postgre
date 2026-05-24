@@ -33,7 +33,7 @@ export class PermissionController {
   };
 
   create = async (
-    req: Request<Record<string, string>, any, CreatePermissionDto>,
+    req: Request<Record<string, string>, unknown, CreatePermissionDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
@@ -50,7 +50,7 @@ export class PermissionController {
   };
 
   update = async (
-    req: Request<{ id: string }, any, UpdatePermissionDto>,
+    req: Request<{ id: string }, unknown, UpdatePermissionDto>,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {

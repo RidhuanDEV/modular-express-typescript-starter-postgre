@@ -1,36 +1,64 @@
-import type { Express } from "express";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import type { Express, Router } from "express";
 import { logger } from "../core/logger/logger.js";
-import authRouter, { path as authPath } from "../modules/auth/auth.routes.js";
-import userRouter, { path as userPath } from "../modules/user/user.routes.js";
-import roleRouter, { path as rolePath } from "../modules/roles/role.routes.js";
-import permissionRouter, { path as permissionPath } from "../modules/permissions/permission.routes.js";
+
+interface RouteModule {
+  path: string;
+  default: Router;
+}
+
+const MODULES_DIR = fileURLToPath(new URL("../modules", import.meta.url));
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isRouteModule(value: unknown): value is RouteModule {
+  if (!isRecord(value)) return false;
+
+  const routePath = value["path"];
+  const router = value["default"];
+
+  return typeof routePath === "string" && typeof router === "function";
+}
+
+async function findRouteFiles(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const fullPath = join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      files.push(...(await findRouteFiles(fullPath)));
+      continue;
+    }
+
+    if (
+      entry.isFile() &&
+      (entry.name.endsWith(".routes.js") || entry.name.endsWith(".routes.ts"))
+    ) {
+      files.push(fullPath);
+    }
+  }
+
+  return files.sort((left, right) => left.localeCompare(right));
+}
 
 export async function loadRoutes(app: Express): Promise<void> {
-  app.use(`/api${authPath}`, authRouter);
-  app.use(`/api${userPath}`, userRouter);
-  app.use(`/api${rolePath}`, roleRouter);
-  app.use(`/api${permissionPath}`, permissionRouter);
+  const routeFiles = await findRouteFiles(MODULES_DIR);
 
-  logger.info(`Loaded Endpoint: /api${authPath}/register ============ Method: POST`);
-  logger.info(`Loaded Endpoint: /api${authPath}/login =============== Method: POST`);
-  logger.info(`Loaded Endpoint: /api${authPath}/me ================== Method: GET`);
-  
-  logger.info(`Loaded Endpoint: /api${userPath}/ =================== Method: GET`);
-  logger.info(`Loaded Endpoint: /api${userPath}/:id ================ Method: GET`);
-  logger.info(`Loaded Endpoint: /api${userPath}/ =================== Method: POST`);
-  logger.info(`Loaded Endpoint: /api${userPath}/:id ================ Method: PATCH`);
-  logger.info(`Loaded Endpoint: /api${userPath}/:id ================ Method: DELETE`);
-  
-  logger.info(`Loaded Endpoint: /api${rolePath}/ =================== Method: GET`);
-  logger.info(`Loaded Endpoint: /api${rolePath}/:id ================ Method: GET`);
-  logger.info(`Loaded Endpoint: /api${rolePath}/ =================== Method: POST`);
-  logger.info(`Loaded Endpoint: /api${rolePath}/:id ================ Method: PUT`);
-  logger.info(`Loaded Endpoint: /api${rolePath}/:id ================ Method: DELETE`);
-  logger.info(`Loaded Endpoint: /api${rolePath}/:id/permissions ==== Method: PUT`);
-  
-  logger.info(`Loaded Endpoint: /api${permissionPath}/ ============= Method: GET`);
-  logger.info(`Loaded Endpoint: /api${permissionPath}/:id ========== Method: GET`);
-  logger.info(`Loaded Endpoint: /api${permissionPath}/ ============= Method: POST`);
-  logger.info(`Loaded Endpoint: /api${permissionPath}/:id ========== Method: PUT`);
-  logger.info(`Loaded Endpoint: /api${permissionPath}/:id ========== Method: DELETE`);
+  for (const file of routeFiles) {
+    const importedModule: unknown = await import(pathToFileURL(file).href);
+
+    if (!isRouteModule(importedModule)) {
+      logger.warn({ file }, "Skipping route file with invalid route module contract");
+      continue;
+    }
+
+    app.use(`/api${importedModule.path}`, importedModule.default);
+    logger.info(`Loaded route module: /api${importedModule.path}`);
+  }
 }
