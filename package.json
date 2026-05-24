@@ -37,7 +37,7 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.10.0",
     "jsonwebtoken": "^9.0.3",
-    "nodemailer": "^6.10.0",
+    "nodemailer": "^8.0.5",
     "oidc-provider": "^8.5.2",
     "pino": "^10.3.1",
     "rate-limit-redis": "^5.0.0",
