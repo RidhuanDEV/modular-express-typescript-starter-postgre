@@ -1,5 +1,5 @@
-import { AuditLog } from "./audit-log.model.js";
-import type { Transaction } from "sequelize";
+import type { Prisma } from "@prisma/client";
+import { prisma } from "../../config/prisma.js";
 
 export interface CreateAuditLogData {
   action: string;
@@ -13,10 +13,13 @@ export interface CreateAuditLogData {
   requestId?: string | null;
 }
 
+type TransactionClient = Prisma.TransactionClient;
+
 export class AuditLogRepository {
-  async create(data: CreateAuditLogData, trx?: Transaction): Promise<void> {
-    await AuditLog.create(
-      {
+  async create(data: CreateAuditLogData, trx?: TransactionClient): Promise<void> {
+    const client = trx ?? prisma;
+    await client.crudAuditLog.create({
+      data: {
         action: data.action,
         module: data.module,
         entityId: data.entityId,
@@ -25,8 +28,7 @@ export class AuditLogRepository {
         after: data.after !== undefined ? JSON.stringify(data.after) : null,
         requestId: data.requestId ?? null,
       },
-      trx ? { transaction: trx } : undefined,
-    );
+    });
   }
 }
 

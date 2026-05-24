@@ -3,20 +3,18 @@ import { AuthRepository } from "./auth.repository.js";
 import { signToken } from "../../core/auth/jwt.service.js";
 import { HttpError } from "../../core/errors/http-error.js";
 import { auditService } from "../../core/audit/audit.service.js";
-import { sequelize } from "../../config/database.js";
+import { prisma } from "../../config/prisma.js";
 import { AuditAction } from "../../constants/audit.constants.js";
 import { AUTH_MODULE, USER_MODULE } from "../../constants/modules.constants.js";
 import type { RegisterDto, LoginDto } from "./auth.schema.js";
-import type { User } from "../user/user.model.js";
-import type { InferAttributes } from "sequelize";
+import type { User } from "@prisma/client";
 
 const SALT_ROUNDS = 12;
 const DEFAULT_ROLE = "user";
 const repository = new AuthRepository();
 
-function safeUser(user: User): Omit<InferAttributes<User>, "password"> {
-  const data = user.get();
-  const { password: _password, ...safe } = data;
+function safeUser(user: User): Omit<User, "password"> {
+  const { password: _password, ...safe } = user;
   return safe;
 }
 
@@ -36,14 +34,14 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
-    const user = await sequelize.transaction(async (trx) => {
+    const user = await prisma.$transaction(async (tx) => {
       const created = await repository.createUser(
         {
           email: dto.email,
           password: hashedPassword,
           roleId: defaultRole.id,
         },
-        trx,
+        tx,
       );
 
       await auditService.persist({
@@ -51,8 +49,8 @@ export class AuthService {
         module: USER_MODULE,
         entityId: created.id,
         userId: created.id,
-        after: created.toJSON(),
-        trx,
+        after: created,
+        trx: tx,
       });
 
       return created;

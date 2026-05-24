@@ -1,8 +1,10 @@
-import type { Transaction } from "sequelize";
+import type { Prisma } from "@prisma/client";
 import { logger } from "../logger/logger.js";
 import { auditLogRepository } from "./audit-log.repository.js";
 import type { AuditActionType } from "../../constants/audit.constants.js";
 import type { ModuleName } from "../../constants/modules.constants.js";
+
+type TransactionClient = Prisma.TransactionClient;
 
 export interface PersistAuditOptions {
   /** Use a value from AuditAction, e.g. AuditAction.CREATE. */
@@ -20,11 +22,11 @@ export interface PersistAuditOptions {
   /** X-Request-Id for cross-referencing with access logs */
   requestId?: string | undefined;
   /**
-   * Sequelize transaction to join.
+   * Prisma transaction client to join.
    * Pass the same transaction as the main mutation so that the audit
    * record is rolled back if the data write fails.
    */
-  trx?: Transaction;
+  trx?: TransactionClient;
 }
 
 export class AuditService {
@@ -55,12 +57,11 @@ export class AuditService {
   }
 
   /**
-   * Persistent audit trail — writes to the `audit_logs` table.
+   * Persistent audit trail — writes to the `crud_audit_logs` table.
    *
    * Use for CREATE, UPDATE, and DELETE operations.
    * Always pass `trx` so the audit row is written inside the same
-   * database transaction as the data mutation — this guarantees that
-   * a rollback removes both the data change and its audit record.
+   * database transaction as the data mutation.
    */
   async persist(options: PersistAuditOptions): Promise<void> {
     const { action, module, entityId, userId, before, after, requestId, trx } =

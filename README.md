@@ -1,6 +1,6 @@
 # Modular Express TypeScript Backend Starter
 
-An opinionated, production-ready backend starter kit for teams that want a clean, modular Express codebase with TypeScript strict mode, Sequelize ORM, Zod validation, JWT authentication, RBAC, caching, and a built-in CRUD generator.
+An opinionated, production-ready backend starter kit for teams that want a clean, modular Express codebase with TypeScript strict mode, Prisma ORM 7, Zod validation, JWT authentication, RBAC, caching, and a built-in CRUD generator.
 
 This repository is designed to be a **robust foundation**, providing essential infrastructure and core modules so you can focus on building your domain logic instead of repeating boilerplate.
 
@@ -8,7 +8,7 @@ This repository is designed to be a **robust foundation**, providing essential i
 
 - **Express 5 + TypeScript Strict**: Predictable application code with the latest framework features.
 - **Feature-Based Modular Architecture**: Clean separation of concerns under `src/modules/*`.
-- **Sequelize ORM**: Centralized model management with automatic association loading.
+- **Prisma ORM 7**: Type-safe database queries and automated schema migrations.
 - **Zod Validation**: Type-safe request payloads and query contracts.
 - **JWT Auth + RBAC**: Secure authentication and fine-grained Role-Based Access Control.
 - **Built-in Audit Logging**: Automatic tracking of sensitive operations and resource changes.
@@ -20,10 +20,12 @@ This repository is designed to be a **robust foundation**, providing essential i
 ## 📁 Project Structure
 
 ```text
+prisma/
+└── schema.prisma         # Prisma database schema definition
 src/
 ├── app.ts                # App entry point (Express configuration)
 ├── server.ts             # Server entry point (Port listening & shutdown)
-├── config/               # Global configurations (Database, Redis, Environment)
+├── config/               # Global configurations (Prisma, Redis, Environment)
 ├── constants/            # Cross-cutting string literals (Audit, Permissions, Modules)
 ├── core/                 # Shared infrastructure (The "Engine")
 │   ├── audit/            # Centralized audit logging logic
@@ -32,14 +34,10 @@ src/
 │   ├── database/         # Shared DB utilities (Query builder, etc.)
 │   ├── errors/           # Custom HTTP error handlers
 │   ├── http/             # Request context and HTTP utilities
-│   ├── logger/           # Structured logging (Pino/Winston)
+│   ├── logger/           # Structured logging (Pino)
 │   ├── middleware/       # Global middlewares (Rate limit, Validation, Errors)
 │   ├── queue/            # Background job processing (BullMQ)
 │   └── validation/       # Zod-specific utilities and error mapping
-├── database/             # Persistent data layer
-│   ├── migrations/       # Sequelize database migrations
-│   ├── models/           # Master index for Sequelize models & associations
-│   └── seeders/          # Database seeding scripts
 ├── docs/                 # OpenAPI/Swagger definition files
 ├── modules/              # Feature modules (Domain logic)
 ├── routes/               # Global route registration index
@@ -58,7 +56,6 @@ src/modules/<feature>/
 ├── mappers/              # Transform Models to DTOs
 ├── policies/             # Authorization rules for this specific resource
 ├── queries/              # Specialized query configurations (Filter/Sort/Search)
-├── <feature>.model.ts    # Sequelize database model
 ├── <feature>.repository.ts # Direct database access layer
 ├── <feature>.service.ts    # Business logic & orchestration
 ├── <feature>.controller.ts # HTTP request/response handling
@@ -73,20 +70,19 @@ src/modules/<feature>/
 | **Routes** | Endpoint definitions, middleware chain, and Swagger annotations. |
 | **Controller** | Acts as an adapter, parsing requests and sending responses. No business logic here. |
 | **Service** | Orchestrates business logic, handles transactions, audit logs, and cache management. |
-| **Repository** | Isolated database operations using the Sequelize model. |
-| **Model** | Defines the data structure and database constraints. |
+| **Repository** | Isolated database operations using the Prisma client. |
 | **Schema** | Uses Zod to enforce strict input validation. |
 | **DTO/Mapper** | Ensures the API contract is decoupled from the database schema. |
 | **Policy** | Contains reusable authorization logic (e.g., `canUpdateThisResource`). |
 
 ## 🛠️ Tech Stack
 
-- **Runtime**: Node.js 20+
+- **Runtime**: Node.js 24+
 - **Framework**: Express 5
 - **Language**: TypeScript (Strict Mode)
-- **Database**: MySQL (via `mysql2` driver)
-- **ORM**: Sequelize
-- **Caching**: Redis
+- **Database**: PostgreSQL 18
+- **ORM**: Prisma 7
+- **Caching**: Redis 8
 - **Queue**: BullMQ
 - **Validation**: Zod
 - **Logging**: Pino
@@ -104,24 +100,29 @@ src/modules/<feature>/
 2. **Configure Environment**:
    ```bash
    cp .env.example .env
-   # Edit .env with your local MySQL and Redis credentials
+   # Edit .env with your local PostgreSQL and Redis credentials
    ```
 
-3. **Run Development Server**:
+3. **Initialize Database**:
+   ```bash
+   npx prisma migrate dev
+   ```
+
+4. **Run Development Server**:
    ```bash
    npm run dev
    ```
 
 ### Docker Setup
 ```bash
-   cp .env.example .env
-   ```
+cp .env.example .env
+```
 
 ```bash
-   docker compose up --build
-   ```
+docker compose up --build
+```
 
-This will spin up the application, MySQL 8, and Redis 7 automatically.
+This will spin up the application, PostgreSQL 18, and Redis 8 automatically.
 
 ## ⚡ Productivity: Modules & CRUD Generator
 
@@ -136,17 +137,15 @@ npm run make:crud <feature-name>
 ```
 
 The CLI generator automatically creates a complete, type-safe feature structure:
-1. **Model** (`<feature>.model.ts`): Configured with paranoid soft-deletion and standard hooks.
-2. **Schema** (`<feature>.schema.ts`): Zod schemas for validating client payloads.
-3. **DTOs** (`dto/*.ts`): Strict request/response types.
-4. **Repository** (`<feature>.repository.ts`): Isolated data access interface.
-5. **Service** (`<feature>.service.ts`): Orchestrates transactions, cache invalidation, and audit logging.
-6. **Controller** (`<feature>.controller.ts`): Handles HTTP routing using generic Express `Request` types without typecasting.
-7. **Routes** (`<feature>.routes.ts`): Direct route mapping using arrow functions (no `.bind()`).
-8. **Policy** (`policies/<feature>.policy.ts`): Fine-grained resource-level ownership controls.
-9. **Query** (`queries/<feature>.query.ts`): Allowlist-driven query builder settings (safely preventing index-misses).
-10. **Mapper** (`mappers/<feature>.mapper.ts`): Decouples database entities from HTTP response contracts.
-11. **Migration & Seeder**: Generates standard DB schemas and RBAC permissions.
+1. **Schema** (`<feature>.schema.ts`): Zod schemas for validating client payloads.
+2. **DTOs** (`dto/*.ts`): Strict request/response types.
+3. **Repository** (`<feature>.repository.ts`): Isolated data access interface.
+4. **Service** (`<feature>.service.ts`): Orchestrates transactions, cache invalidation, and audit logging.
+5. **Controller** (`<feature>.controller.ts`): Handles HTTP routing using generic Express `Request` types without typecasting.
+6. **Routes** (`<feature>.routes.ts`): Direct route mapping using arrow functions (no `.bind()`).
+7. **Policy** (`policies/<feature>.policy.ts`): Fine-grained resource-level ownership controls.
+8. **Query** (`queries/<feature>.query.ts`): Allowlist-driven query builder settings (safely preventing index-misses).
+9. **Mapper** (`mappers/<feature>.mapper.ts`): Decouples database entities from HTTP response contracts.
 
 ---
 
@@ -170,10 +169,10 @@ When expanding the starter, follow these strict guidelines to maintain codebase 
   * **Asynchronous Offloading**: For non-blocking operations like sending emails or notifying external APIs, offload them to background jobs (using `src/core/queue/`) after the transaction successfully commits.
 
 ### 3. Edge Case: Custom Complex DB Queries
-* **Problem**: A query needs complex aggregations or multi-table joins that are difficult or slow to model in Sequelize.
+* **Problem**: A query needs complex aggregations or multi-table joins that are difficult or slow to model in standard Prisma queries.
 * **Solution**:
   * Add a custom method inside `<feature>.repository.ts`.
-  * Write raw SQL queries using `sequelize.query(...)` rather than forcing Sequelize's ORM helper functions.
+  * Write raw SQL queries using `prisma.$queryRaw` rather than forcing Prisma ORM helper functions.
   * Ensure the output is mapped back to a predictable structure inside `<feature>.mapper.ts` to maintain a stable API contract.
 
 ## 🚢 Deployment

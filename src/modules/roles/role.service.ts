@@ -1,5 +1,5 @@
 import { RoleRepository } from "./role.repository.js";
-import { sequelize } from "../../config/database.js";
+import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../core/errors/http-error.js";
 import { cacheService } from "../../core/cache/cache.service.js";
 import { auditService } from "../../core/audit/audit.service.js";
@@ -42,16 +42,16 @@ export class RoleService {
     const existing = await repository.findByName(dto.name);
     if (existing) throw HttpError.conflict(`Role '${dto.name}' already exists`);
 
-    const role = await sequelize.transaction(async (trx) => {
-      const created = await repository.create(dto, trx);
+    const role = await prisma.$transaction(async (tx) => {
+      const created = await repository.create(dto, tx);
       await auditService.persist({
         action: AuditAction.CREATE,
         module: ROLE_MODULE,
         entityId: created.id,
         userId: user.id,
-        after: created.toJSON(),
+        after: created,
         requestId,
-        trx,
+        trx: tx,
       });
       return created;
     });
@@ -76,8 +76,8 @@ export class RoleService {
       }
     }
 
-    const role = await sequelize.transaction(async (trx) => {
-      const updated = await repository.update(id, dto, trx);
+    const role = await prisma.$transaction(async (tx) => {
+      const updated = await repository.update(id, dto, tx);
       if (!updated) throw HttpError.notFound("Role not found");
 
       await auditService.persist({
@@ -85,10 +85,10 @@ export class RoleService {
         module: ROLE_MODULE,
         entityId: id,
         userId: user.id,
-        before: existingRole.toJSON(),
-        after: updated.toJSON(),
+        before: existingRole,
+        after: updated,
         requestId,
-        trx,
+        trx: tx,
       });
 
       return updated;
@@ -103,8 +103,8 @@ export class RoleService {
     const existingRole = await repository.findById(id);
     if (!existingRole) throw HttpError.notFound("Role not found");
 
-    await sequelize.transaction(async (trx) => {
-      const deleted = await repository.delete(id, trx);
+    await prisma.$transaction(async (tx) => {
+      const deleted = await repository.delete(id, tx);
       if (!deleted) throw HttpError.notFound("Role not found");
 
       await auditService.persist({
@@ -112,9 +112,9 @@ export class RoleService {
         module: ROLE_MODULE,
         entityId: id,
         userId: user.id,
-        before: existingRole.toJSON(),
+        before: existingRole,
         requestId,
-        trx,
+        trx: tx,
       });
     });
 
@@ -133,9 +133,9 @@ export class RoleService {
     const existingRole = await repository.findById(id);
     if (!existingRole) throw HttpError.notFound("Role not found");
 
-    const updatedRole = await sequelize.transaction(async (trx) => {
-      await repository.setPermissions(id, dto.permissionIds, trx);
-      const updated = await repository.findById(id, trx);
+    const updatedRole = await prisma.$transaction(async (tx) => {
+      await repository.setPermissions(id, dto.permissionIds, tx);
+      const updated = await repository.findById(id, tx);
       if (!updated) throw HttpError.notFound("Role not found");
 
       await auditService.persist({
@@ -143,10 +143,10 @@ export class RoleService {
         module: ROLE_MODULE,
         entityId: id,
         userId: user.id,
-        before: existingRole.toJSON(),
-        after: updated.toJSON(),
+        before: existingRole,
+        after: updated,
         requestId,
-        trx,
+        trx: tx,
       });
 
       return updated;

@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -8,8 +7,6 @@ const ROOT = path.resolve(process.cwd());
 const SRC = path.join(ROOT, "src");
 const CONSTANTS = path.join(SRC, "constants");
 const MODULES = path.join(SRC, "modules");
-const MIGRATIONS = path.join(SRC, "database", "migrations");
-const SEEDERS = path.join(SRC, "database", "seeders");
 const MODULE_CONSTANTS_FILE = path.join(CONSTANTS, "modules.constants.ts");
 const PERMISSION_CONSTANTS_FILE = path.join(
   CONSTANTS,
@@ -54,12 +51,6 @@ function pluralize(s: string): string {
     return s + "es";
   }
   return s + "s";
-}
-
-function timestamp(): string {
-  const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
 function writeFile(filePath: string, content: string): void {
@@ -144,30 +135,58 @@ ${keys.map((key) => `export const ${key}_PERMISSIONS = PERMISSION_GROUPS.${key};
 `;
 }
 
-async function readModuleConstants(): Promise<ModuleConstantMap> {
+function parseModuleConstants(content: string): ModuleConstantMap {
+  const result: ModuleConstantMap = {};
+  const regex = /^\s*([A-Z_0-9]+):\s*["']([^"']+)["']/gm;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(content)) !== null) {
+    const key = match[1];
+    const val = match[2];
+    if (key && val) {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
+function parsePermissionGroups(content: string): PermissionGroupMap {
+  const result: PermissionGroupMap = {};
+  const groupRegex = /^\s*([A-Z_0-9]+):\s*\{([^}]+)\}/gm;
+  let groupMatch: RegExpExecArray | null;
+  while ((groupMatch = groupRegex.exec(content)) !== null) {
+    const groupKey = groupMatch[1];
+    const groupBody = groupMatch[2];
+    if (groupKey && groupBody) {
+      const innerMap: Record<string, string> = {};
+      const innerRegex = /\s*([A-Z_0-9]+):\s*["']([^"']+)["']/g;
+      let innerMatch: RegExpExecArray | null;
+      while ((innerMatch = innerRegex.exec(groupBody)) !== null) {
+        const key = innerMatch[1];
+        const val = innerMatch[2];
+        if (key && val) {
+          innerMap[key] = val;
+        }
+      }
+      result[groupKey] = innerMap;
+    }
+  }
+  return result;
+}
+
+function readModuleConstants(): ModuleConstantMap {
   if (!fs.existsSync(MODULE_CONSTANTS_FILE)) {
     return { ...DEFAULT_MODULE_CONSTANTS };
   }
-
-  const mod = (await import(pathToFileURL(MODULE_CONSTANTS_FILE).href)) as {
-    MODULES?: ModuleConstantMap;
-  };
-
-  return mod.MODULES ? { ...mod.MODULES } : { ...DEFAULT_MODULE_CONSTANTS };
+  const content = fs.readFileSync(MODULE_CONSTANTS_FILE, "utf-8");
+  return parseModuleConstants(content);
 }
 
-async function readPermissionGroups(): Promise<PermissionGroupMap> {
+function readPermissionGroups(): PermissionGroupMap {
   if (!fs.existsSync(PERMISSION_CONSTANTS_FILE)) {
     return { ...DEFAULT_PERMISSION_GROUPS };
   }
-
-  const mod = (await import(pathToFileURL(PERMISSION_CONSTANTS_FILE).href)) as {
-    PERMISSION_GROUPS?: PermissionGroupMap;
-  };
-
-  return mod.PERMISSION_GROUPS
-    ? JSON.parse(JSON.stringify(mod.PERMISSION_GROUPS))
-    : { ...DEFAULT_PERMISSION_GROUPS };
+  const content = fs.readFileSync(PERMISSION_CONSTANTS_FILE, "utf-8");
+  return parsePermissionGroups(content);
 }
 
 function moduleConstantName(name: string): string {
@@ -178,15 +197,15 @@ function permissionConstantName(name: string): string {
   return `${constantCase(name)}_PERMISSIONS`;
 }
 
-async function ensureConstantFiles(name: string): Promise<void> {
+function ensureConstantFiles(name: string): void {
   const key = constantCase(name);
 
-  const modules = await readModuleConstants();
-  modules[key] ??= name;
+  const modules = readModuleConstants();
+  modules[key] = name;
   writeFile(MODULE_CONSTANTS_FILE, renderModuleConstants(modules));
 
-  const permissionGroups = await readPermissionGroups();
-  permissionGroups[key] ??= {
+  const permissionGroups = readPermissionGroups();
+  permissionGroups[key] = {
     CREATE: `create_${name}`,
     UPDATE: `update_${name}`,
     DELETE: `delete_${name}`,
@@ -213,43 +232,6 @@ function validateModuleName(name: string): string {
 
 // ─── Template Generators ────────────────────────────────────────────────────
 
-function genModel(name: string): string {
-  const pascal = pascalCase(name);
-  const table = pluralize(name.replace(/-/g, "_"));
-  return `import { DataTypes, Model } from 'sequelize';
-import type { Sequelize, InferAttributes, InferCreationAttributes, CreationOptional } from 'sequelize';
-
-export class ${pascal} extends Model<InferAttributes<${pascal}>, InferCreationAttributes<${pascal}>> {
-  declare id: CreationOptional<string>;
-  declare createdAt: CreationOptional<Date>;
-  declare updatedAt: CreationOptional<Date>;
-  declare deletedAt: CreationOptional<Date | null>;
-}
-
-export function initModel(sequelize: Sequelize): typeof ${pascal} {
-  ${pascal}.init(
-    {
-      id: {
-        type: DataTypes.UUID,
-        defaultValue: DataTypes.UUIDV4,
-        primaryKey: true,
-      },
-      createdAt: DataTypes.DATE,
-      updatedAt: DataTypes.DATE,
-      deletedAt: DataTypes.DATE,
-    },
-    {
-      sequelize,
-      tableName: '${table}',
-      paranoid: true,
-      underscored: true,
-    },
-  );
-  return ${pascal};
-}
-`;
-}
-
 function genSchema(name: string): string {
   const pascal = pascalCase(name);
   return `import { z } from 'zod';
@@ -271,7 +253,7 @@ export const search${pascal}Schema = z.object({
 });
 
 export const ${camelCase(name)}IdSchema = z.object({
-  id: z.uuid(),
+  id: z.string().uuid(),
 });
 `;
 }
@@ -318,36 +300,64 @@ export type ${pascal}ResponseProjection = Partial<${pascal}ResponseDto>;
 
 function genRepository(name: string): string {
   const pascal = pascalCase(name);
-  return `import { ${pascal} } from './${name}.model.js';
-import type { FindOptions, WhereOptions, Transaction } from 'sequelize';
+  return `import type { Prisma, ${pascal} } from '@prisma/client';
+import { prisma } from '../../config/prisma.js';
 import type { Create${pascal}Dto } from './dto/create-${name}.dto.js';
 import type { Update${pascal}Dto } from './dto/update-${name}.dto.js';
+import type { PrismaFindOptions } from '../../core/database/query-builder.js';
+
+type TransactionClient = Prisma.TransactionClient;
 
 export class ${pascal}Repository {
-  async findAll(options: FindOptions = {}): Promise<{ rows: ${pascal}[]; count: number }> {
-    return ${pascal}.findAndCountAll(options);
+  async findAll(options: PrismaFindOptions): Promise<{ rows: ${pascal}[]; count: number }> {
+    const [rows, count] = await Promise.all([
+      prisma.${camelCase(name)}.findMany({
+        where: options.where,
+        skip: options.skip,
+        take: options.take,
+        orderBy: options.orderBy,
+        select: options.select,
+        include: options.include,
+      }) as Promise<${pascal}[]>,
+      prisma.${camelCase(name)}.count({ where: options.where }),
+    ]);
+    return { rows, count };
   }
 
-  async findById(id: string, trx?: Transaction): Promise<${pascal} | null> {
-    return ${pascal}.findByPk(id, trx ? { transaction: trx } : undefined);
-  }
-
-  async create(data: Create${pascal}Dto, trx?: Transaction): Promise<${pascal}> {
-    return ${pascal}.create(data, trx ? { transaction: trx } : undefined);
-  }
-
-  async update(id: string, data: Update${pascal}Dto, trx?: Transaction): Promise<${pascal} | null> {
-    const record = await ${pascal}.findByPk(id, trx ? { transaction: trx } : undefined);
-    if (!record) return null;
-    return record.update(data, trx ? { transaction: trx } : undefined);
-  }
-
-  async delete(id: string, trx?: Transaction): Promise<boolean> {
-    const count = await ${pascal}.destroy({
-      where: { id } as WhereOptions,
-      ...(trx ? { transaction: trx } : {}),
+  async findById(id: string, trx?: TransactionClient): Promise<${pascal} | null> {
+    const client = trx ?? prisma;
+    return client.${camelCase(name)}.findUnique({
+      where: { id },
     });
-    return count > 0;
+  }
+
+  async create(data: Create${pascal}Dto, trx?: TransactionClient): Promise<${pascal}> {
+    const client = trx ?? prisma;
+    return client.${camelCase(name)}.create({
+      data,
+    });
+  }
+
+  async update(id: string, data: Update${pascal}Dto, trx?: TransactionClient): Promise<${pascal} | null> {
+    const client = trx ?? prisma;
+    const existing = await client.${camelCase(name)}.findUnique({ where: { id } });
+    if (!existing) return null;
+    return client.${camelCase(name)}.update({
+      where: { id },
+      data,
+    });
+  }
+
+  async delete(id: string, trx?: TransactionClient): Promise<boolean> {
+    const client = trx ?? prisma;
+    try {
+      await client.${camelCase(name)}.delete({
+        where: { id },
+      });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
 `;
@@ -356,25 +366,20 @@ export class ${pascal}Repository {
 function genQuery(name: string): string {
   const pascal = pascalCase(name);
   const camel = camelCase(name);
-  return `import { Op } from 'sequelize';
-import type { QueryBuilderConfig } from '../../../core/database/query-builder.js';
+  return `import type { QueryBuilderConfig } from '../../../core/database/query-builder.js';
 
 /**
  * Query builder config for ${pascal}.
  *
- * Use Sequelize model attribute names here (usually camelCase), not raw DB
- * column names. That keeps sort/select config aligned with mapper contracts.
+ * Use Prisma model field names here (camelCase).
  *
- * searchFields:    Model attributes searched with LIKE when ?search= is provided.
- * sortableFields:  Allowlist of model attributes valid for ?sortBy=. Any field not in
- *                  this list silently falls back to createdAt, preventing
- *                  arbitrary column exposure and index-miss attacks.
+ * searchFields:    Model fields searched with \`contains\` when ?search= is provided.
+ * sortableFields:  Allowlist of model fields valid for ?sortBy=. Any field not in
+ *                  this list silently falls back to createdAt.
  * selectableFields: Allowlist for ?fields= field selection. Only these fields
  *                  can be returned, preventing internal/sensitive column leaks.
- * filters:         Maps query-param key to model attribute + Sequelize operator.
- * defaultIncludes: Eager-loaded associations to prevent N+1 queries.
- *
- * Uncomment and adjust after adding real columns to the model.
+ * filters:         Maps query-param key to model field + Prisma operator.
+ * defaultIncludes: Eager-loaded relations to prevent N+1 queries.
  */
 export const ${camel}QueryConfig: QueryBuilderConfig = {
   searchFields: [
@@ -385,39 +390,32 @@ export const ${camel}QueryConfig: QueryBuilderConfig = {
     'createdAt',
     'updatedAt',
     // 'name',
-    // 'price',
   ],
   selectableFields: [
     'id',
     'createdAt',
     'updatedAt',
     // 'name',
-    // 'price',
   ],
   filters: {
-    // yearMin:       { column: 'year',       type: 'number', operator: Op.gte },
-    // yearMax:       { column: 'year',       type: 'number', operator: Op.lte },
-    // isActive:      { column: 'is_active',  type: 'boolean' },
-    // createdAfter:  { column: 'createdAt', type: 'date',   operator: Op.gte },
-    // createdBefore: { column: 'createdAt', type: 'date',   operator: Op.lte },
+    // yearMin:       { column: 'year',       type: 'number', operator: 'gte' },
+    // yearMax:       { column: 'year',       type: 'number', operator: 'lte' },
+    // isActive:      { column: 'isActive',   type: 'boolean' },
+    // createdAfter:  { column: 'createdAt',  type: 'date',   operator: 'gte' },
+    // createdBefore: { column: 'createdAt',  type: 'date',   operator: 'lte' },
   },
-  // defaultIncludes: [
-  //   // Add Sequelize include configs here to prevent N+1 queries.
-  //   // Example: { model: ${pascal}Image, as: 'images', attributes: ['id', 'url'] }
-  // ],
+  defaultIncludes: {},
 };
-
-export { Op };
 `;
 }
 
 function genMapper(name: string): string {
   const pascal = pascalCase(name);
-  return `import type { ${pascal} } from '../${name}.model.js';
+  return `import type { ${pascal} } from '@prisma/client';
 import type { ${pascal}ResponseDto, ${pascal}ResponseProjection } from '../dto/${name}-response.dto.js';
 
 /**
- * Maps a Sequelize ${pascal} model to ${pascal}ResponseDto.
+ * Maps a Prisma ${pascal} model to ${pascal}ResponseDto.
  *
  * This function is the **API contract boundary**: changes to DB column names
  * should be handled here, never in the controller or service, so the
@@ -425,30 +423,24 @@ import type { ${pascal}ResponseDto, ${pascal}ResponseProjection } from '../dto/$
  *
  * Dates are serialised to ISO 8601 strings to match JSON output exactly.
  */
-function toIsoString(value: unknown): string | undefined {
-  return value instanceof Date ? value.toISOString() : undefined;
-}
-
 export function to${pascal}Response(model: ${pascal}): ${pascal}ResponseDto {
   return {
     id: model.id,
-    createdAt: (model.createdAt as Date).toISOString(),
-    updatedAt: (model.updatedAt as Date).toISOString(),
+    createdAt: model.createdAt.toISOString(),
+    updatedAt: model.updatedAt.toISOString(),
     // Map additional fields here:
     // name: model.name,
-    // price: model.price,
   };
 }
 
 export function to${pascal}ResponseList(models: ${pascal}[]): ${pascal}ResponseProjection[] {
   return models.map((model) => {
-    const createdAt = toIsoString(model.createdAt);
-    const updatedAt = toIsoString(model.updatedAt);
-
     return {
-      ...(typeof model.id === 'string' ? { id: model.id } : {}),
-      ...(createdAt !== undefined ? { createdAt } : {}),
-      ...(updatedAt !== undefined ? { updatedAt } : {}),
+      id: model.id,
+      createdAt: model.createdAt.toISOString(),
+      updatedAt: model.updatedAt.toISOString(),
+      // Map additional fields here:
+      // name: model.name,
     };
   });
 }
@@ -459,8 +451,7 @@ function genPolicy(name: string): string {
   const pascal = pascalCase(name);
   const camel = camelCase(name);
   return `import type { JwtUserPayload } from '../../../types/index.js';
-import type { ${pascal} } from '../${name}.model.js';
-import { HttpError } from '../../../core/errors/http-error.js';
+import type { ${pascal} } from '@prisma/client';
 
 /**
  * Resource-level authorization policy for ${pascal}.
@@ -498,7 +489,7 @@ function genService(name: string): string {
   const camel = camelCase(name);
   const moduleConst = moduleConstantName(name);
   return `import { ${pascal}Repository } from './${name}.repository.js';
-import { sequelize } from '../../config/database.js';
+import { prisma } from '../../config/prisma.js';
 import { cacheService } from '../../core/cache/cache.service.js';
 import { auditService } from '../../core/audit/audit.service.js';
 import { HttpError } from '../../core/errors/http-error.js';
@@ -512,15 +503,16 @@ import { ${camel}QueryConfig } from './queries/${name}.query.js';
 import type { Create${pascal}Dto } from './dto/create-${name}.dto.js';
 import type { Update${pascal}Dto } from './dto/update-${name}.dto.js';
 import type { Search${pascal}Dto } from './dto/search-${name}.dto.js';
-import type { JwtUserPayload } from '../../types/index.js';
+import type { JwtUserPayload, PaginationMeta } from '../../types/index.js';
+import type { ${pascal}ResponseDto, ${pascal}ResponseProjection } from './dto/${name}-response.dto.js';
 
 const repository = new ${pascal}Repository();
 const CACHE_PREFIX = ${moduleConst};
 
 export class ${pascal}Service {
-  async findAll(query: Search${pascal}Dto) {
+  async findAll(query: Search${pascal}Dto): Promise<{ data: ${pascal}ResponseProjection[]; meta: PaginationMeta }> {
     const cacheKey = \`\${CACHE_PREFIX}:list:\${JSON.stringify(query)}\`;
-    const cached = await cacheService.get(cacheKey);
+    const cached = await cacheService.get<{ data: ${pascal}ResponseProjection[]; meta: PaginationMeta }>(cacheKey);
     if (cached) return cached;
 
     const findOptions = buildFindOptions(query, ${camel}QueryConfig);
@@ -536,9 +528,9 @@ export class ${pascal}Service {
     return result;
   }
 
-  async findById(id: string) {
+  async findById(id: string): Promise<${pascal}ResponseDto> {
     const cacheKey = \`\${CACHE_PREFIX}:\${id}\`;
-    const cached = await cacheService.get(cacheKey);
+    const cached = await cacheService.get<${pascal}ResponseDto>(cacheKey);
     if (cached) return cached;
 
     const record = await repository.findById(id);
@@ -549,54 +541,44 @@ export class ${pascal}Service {
     return response;
   }
 
-  /**
-   * Transaction wraps both the INSERT and the audit write so they succeed
-   * or roll back together. Cache is busted only after successful commit.
-   */
-  async create(data: Create${pascal}Dto, user: JwtUserPayload, requestId?: string) {
+  async create(data: Create${pascal}Dto, user: JwtUserPayload, requestId?: string): Promise<${pascal}ResponseDto> {
     ${camel}Policy.canCreate(user);
 
-    const record = await sequelize.transaction(async (trx) => {
-      const created = await repository.create(data, trx);
+    const record = await prisma.$transaction(async (tx) => {
+      const created = await repository.create(data, tx);
       await auditService.persist({
         action: AuditAction.CREATE,
         module: ${moduleConst},
         entityId: created.id,
         userId: user.id,
-        after: created.toJSON(),
+        after: created,
         requestId,
-        trx,
+        trx: tx,
       });
       return created;
     });
 
-    // Side effects after successful commit
     await cacheService.invalidatePattern(\`\${CACHE_PREFIX}:list:*\`);
     return to${pascal}Response(record);
   }
 
-  /**
-   * Reads the existing record before the transaction for policy check and
-   * before-snapshot. The transaction boundary covers only the mutation and
-   * audit write, keeping the lock window as small as possible.
-   */
-  async update(id: string, data: Update${pascal}Dto, user: JwtUserPayload, requestId?: string) {
+  async update(id: string, data: Update${pascal}Dto, user: JwtUserPayload, requestId?: string): Promise<${pascal}ResponseDto> {
     const existing = await repository.findById(id);
     if (!existing) throw HttpError.notFound('${pascal} not found');
     ${camel}Policy.canUpdate(user, existing);
 
-    const record = await sequelize.transaction(async (trx) => {
-      const updated = await repository.update(id, data, trx);
+    const record = await prisma.$transaction(async (tx) => {
+      const updated = await repository.update(id, data, tx);
       if (!updated) throw HttpError.notFound('${pascal} not found');
       await auditService.persist({
         action: AuditAction.UPDATE,
         module: ${moduleConst},
         entityId: id,
         userId: user.id,
-        before: existing.toJSON(),
-        after: updated.toJSON(),
+        before: existing,
+        after: updated,
         requestId,
-        trx,
+        trx: tx,
       });
       return updated;
     });
@@ -606,13 +588,13 @@ export class ${pascal}Service {
     return to${pascal}Response(record);
   }
 
-  async delete(id: string, user: JwtUserPayload, requestId?: string) {
+  async delete(id: string, user: JwtUserPayload, requestId?: string): Promise<void> {
     const existing = await repository.findById(id);
     if (!existing) throw HttpError.notFound('${pascal} not found');
     ${camel}Policy.canDelete(user, existing);
 
-    await sequelize.transaction(async (trx) => {
-      const deleted = await repository.delete(id, trx);
+    await prisma.$transaction(async (tx) => {
+      const deleted = await repository.delete(id, tx);
       if (!deleted) throw HttpError.notFound('${pascal} not found');
 
       await auditService.persist({
@@ -620,9 +602,9 @@ export class ${pascal}Service {
         module: ${moduleConst},
         entityId: id,
         userId: user.id,
-        before: existing.toJSON(),
+        before: existing,
         requestId,
-        trx,
+        trx: tx,
       });
     });
 
@@ -900,117 +882,6 @@ export default router;
 `;
 }
 
-function genMigration(name: string): string {
-  const table = pluralize(name.replace(/-/g, "_"));
-  return `import type { QueryInterface } from 'sequelize';
-import { DataTypes } from 'sequelize';
-
-export async function up(queryInterface: QueryInterface): Promise<void> {
-  await queryInterface.createTable('${table}', {
-    id: {
-      type: DataTypes.UUID,
-      defaultValue: DataTypes.UUIDV4,
-      primaryKey: true,
-      allowNull: false,
-    },
-    // TODO: Add your domain columns here.
-    // Examples:
-    //   name:   { type: DataTypes.STRING(255), allowNull: false },
-    //   price:  { type: DataTypes.DECIMAL(12, 2), allowNull: true },
-    //   status: { type: DataTypes.ENUM('active', 'inactive'), allowNull: false },
-    //   user_id: { type: DataTypes.UUID, allowNull: false, references: { model: 'users', key: 'id' } },
-    created_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    updated_at: {
-      type: DataTypes.DATE,
-      allowNull: false,
-    },
-    deleted_at: {
-      type: DataTypes.DATE,
-      allowNull: true,
-    },
-  });
-
-  // TODO: Add indexes for columns used in search, sort, filter, and FK lookups.
-  // await queryInterface.addIndex('${table}', ['status']);
-  // await queryInterface.addIndex('${table}', ['created_at']);
-  // await queryInterface.addIndex('${table}', ['user_id']); // FK index
-}
-
-export async function down(queryInterface: QueryInterface): Promise<void> {
-  await queryInterface.dropTable('${table}');
-}
-`;
-}
-
-// ─── Permission Seeder ──────────────────────────────────────────────────────
-
-function genPermissionSeeder(name: string): string {
-  const permissionConst = permissionConstantName(name);
-  return `import type { QueryInterface, QueryOptions } from 'sequelize';
-const { ${permissionConst} } = require('../../constants/permissions.constants.js');
-
-interface BulkInsertOptions extends QueryOptions {
-  ignoreDuplicates?: boolean;
-}
-
-const PERMISSIONS: string[] = Object.values(${permissionConst});
-
-const seeder = {
-  async up(queryInterface: QueryInterface): Promise<void> {
-    const now = new Date();
-
-    // 1. Insert permissions (skip duplicates)
-    const permissionRows = PERMISSIONS.map((pname) => ({
-      id: globalThis.crypto.randomUUID(),
-      name: pname,
-      created_at: now,
-      updated_at: now,
-    }));
-
-    const insertOpts: BulkInsertOptions = { ignoreDuplicates: true };
-    await queryInterface.bulkInsert('permissions', permissionRows, insertOpts);
-
-    // 2. Find admin role
-    const [adminRoles] = await queryInterface.sequelize.query(
-      \`SELECT id FROM roles WHERE name = 'admin' LIMIT 1\`,
-    );
-    const adminRole = (adminRoles as Array<{ id: string }>)[0];
-    if (!adminRole) {
-      console.warn('Seeder: admin role not found — skipping role_permissions insert');
-      return;
-    }
-
-    // 3. Re-fetch inserted permission ids (handles pre-existing rows)
-    const placeholders = PERMISSIONS.map(() => '?').join(', ');
-    const [rows] = await queryInterface.sequelize.query(
-      \`SELECT id FROM permissions WHERE name IN (\${placeholders})\`,
-      { replacements: PERMISSIONS },
-    );
-
-    const rolePermRows = (rows as Array<{ id: string }>).map((p) => ({
-      role_id: adminRole.id,
-      permission_id: p.id,
-    }));
-
-    await queryInterface.bulkInsert('role_permissions', rolePermRows, insertOpts);
-  },
-
-  async down(queryInterface: QueryInterface): Promise<void> {
-    const placeholders = PERMISSIONS.map(() => '?').join(', ');
-    await queryInterface.sequelize.query(
-      \`DELETE FROM permissions WHERE name IN (\${placeholders})\`,
-      { replacements: PERMISSIONS },
-    );
-  }
-};
-
-export = seeder;
-`;
-}
-
 // ─── Postman Collection ─────────────────────────────────────────────────────
 
 interface PostmanItem {
@@ -1039,7 +910,8 @@ function getOrCreateCollection(): PostmanCollection {
     if (content.startsWith("\ufeff")) {
       content = content.slice(1);
     }
-    return JSON.parse(content) as PostmanCollection;
+    const parsed: PostmanCollection = JSON.parse(content);
+    return parsed;
   }
   return {
     info: {
@@ -1147,12 +1019,12 @@ function updatePostman(name: string): void {
 
 // ─── Main ───────────────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
+function main(): void {
   const rawName = process.argv[2];
 
   if (!rawName) {
     console.error("Usage: npm run make:crud <module-name>");
-    console.error("Example: npm run make:crud user");
+    console.error("Example: npm run make:crud product");
     process.exit(1);
   }
 
@@ -1166,35 +1038,11 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Guard: block if a migration or seeder for this resource already exists
-  const existingMigration = fs
-    .readdirSync(fs.existsSync(MIGRATIONS) ? MIGRATIONS : ROOT)
-    .find((f) => f.endsWith(`-create-${name}.ts`));
-  if (existingMigration) {
-    console.error(
-      `Error: Migration for "${name}" already exists: ${existingMigration}`,
-    );
-    process.exit(1);
-  }
-
-  if (fs.existsSync(SEEDERS)) {
-    const existingSeeder = fs
-      .readdirSync(SEEDERS)
-      .find((f) => f.endsWith(`-seed-${name}-permissions.ts`));
-    if (existingSeeder) {
-      console.error(
-        `Error: Permission seeder for "${name}" already exists: ${existingSeeder}`,
-      );
-      process.exit(1);
-    }
-  }
-
   console.log(`\nGenerating module: ${name}\n`);
 
-  await ensureConstantFiles(name);
+  ensureConstantFiles(name);
 
   // Module files
-  writeFile(path.join(moduleDir, `${name}.model.ts`), genModel(name));
   writeFile(path.join(moduleDir, `${name}.schema.ts`), genSchema(name));
   writeFile(
     path.join(moduleDir, "dto", `create-${name}.dto.ts`),
@@ -1229,28 +1077,19 @@ async function main(): Promise<void> {
   writeFile(path.join(moduleDir, `${name}.controller.ts`), genController(name));
   writeFile(path.join(moduleDir, `${name}.routes.ts`), genRoutes(name));
 
-  // Migration
-  const ts = timestamp();
-  const migrationFile = `${ts}-create-${name}.ts`;
-  writeFile(path.join(MIGRATIONS, migrationFile), genMigration(name));
-
-  // Permission seeder (timestamp +1 second to guarantee ordering after migration)
-  const seederTs = (() => {
-    const d = new Date();
-    d.setSeconds(d.getSeconds() + 1);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
-  })();
-  const seederFile = `${seederTs}-seed-${name}-permissions.ts`;
-  writeFile(path.join(SEEDERS, seederFile), genPermissionSeeder(name));
-
   // Postman
   updatePostman(name);
 
-  console.log(`\nModule "${name}" generated successfully!\n`);
+  console.log(`\nModule "${name}" generated successfully!`);
+  console.log(`\nImportant next steps:`);
+  console.log(`1. Add model "${pascalCase(name)}" to your schema.prisma file manually.`);
+  console.log(`2. Run "npx prisma migrate dev --name create-${name}" to update the database schema.`);
+  console.log(`3. Import the new router in src/app.ts to expose the API endpoints.\n`);
 }
 
-main().catch((error) => {
+try {
+  main();
+} catch (error) {
   console.error("Failed to generate module:", error);
   process.exit(1);
-});
+}

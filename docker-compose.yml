@@ -7,26 +7,26 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=mysql://root:password@mysql:3306/myapp
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
       - REDIS_URL=redis://redis:6379
       - IS_DOCKER=true
     depends_on:
-      - mysql
+      - postgres
       - redis
     restart: unless-stopped
 
-  mysql:
-    image: mysql:8.4
-    container_name: myapp_mysql
+  postgres:
+    image: postgres:18-alpine
+    container_name: myapp_postgres
     env_file:
       - .env
     ports:
-      - "3308:3306"
+      - "5432:5432"
     volumes:
-      - ./.docker/mysql_data:/var/lib/mysql
+      - ./.docker/postgres_data:/var/lib/postgresql/data
 
   redis:
-    image: redis:7.4-alpine
+    image: redis:8.0-alpine
     container_name: myapp_redis
     ports:
       - "6379:6379"

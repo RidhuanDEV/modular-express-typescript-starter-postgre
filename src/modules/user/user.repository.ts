@@ -1,82 +1,98 @@
-import { User } from "./user.model.js";
-import { Role } from "../roles/role.model.js";
-import type {
-  FindOptions,
-  Transaction,
-  CreateOptions,
-  InferAttributes,
-  InstanceUpdateOptions,
-  InstanceDestroyOptions,
-} from "sequelize";
+import type { Prisma, User } from "@prisma/client";
+import { prisma } from "../../config/prisma.js";
 import type { CreateUserDto } from "./dto/create-user.dto.js";
 import type { UpdateUserDto } from "./dto/update-user.dto.js";
+import type { PrismaFindOptions } from "../../core/database/query-builder.js";
+
+type TransactionClient = Prisma.TransactionClient;
+
+/** User with eager-loaded role and its permissions */
+export type UserWithRole = Prisma.UserGetPayload<{
+  include: {
+    role: {
+      include: {
+        permissions: {
+          include: { permission: true };
+        };
+      };
+    };
+  };
+}>;
 
 export class UserRepository {
-  async findAll(options?: FindOptions): Promise<{ rows: User[]; count: number }> {
-    const findOptions: FindOptions = {
-      ...options,
-      include: options?.include || [{ model: Role, as: "role" }],
-    };
-    return User.findAndCountAll(findOptions);
+  async findAll(options: PrismaFindOptions): Promise<{ rows: UserWithRole[]; count: number }> {
+    const [rows, count] = await Promise.all([
+      prisma.user.findMany({
+        where: options.where,
+        skip: options.skip,
+        take: options.take,
+        orderBy: options.orderBy,
+        include: {
+          role: {
+            include: {
+              permissions: {
+                include: { permission: true },
+              },
+            },
+          },
+        },
+      }),
+      prisma.user.count({ where: options.where }),
+    ]);
+    return { rows, count };
   }
 
-  async findById(id: string): Promise<User | null> {
-    return User.findByPk(id, {
-      include: [{ model: Role, as: "role" }],
+  async findById(id: string): Promise<UserWithRole | null> {
+    return prisma.user.findUnique({
+      where: { id },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: { permission: true },
+            },
+          },
+        },
+      },
     });
   }
 
-  async create(data: CreateUserDto, transaction?: Transaction): Promise<User> {
-    const options: CreateOptions<InferAttributes<User>> = {};
-    if (transaction !== undefined) {
-      options.transaction = transaction;
-    }
-    return User.create(
-      {
+  async create(data: CreateUserDto, trx?: TransactionClient): Promise<User> {
+    const client = trx ?? prisma;
+    return client.user.create({
+      data: {
         email: data.email,
         password: data.password,
         roleId: data.roleId,
       },
-      options,
-    );
+    });
   }
 
   async update(
     id: string,
     data: UpdateUserDto,
-    transaction?: Transaction,
+    trx?: TransactionClient,
   ): Promise<User | null> {
-    const findOptions: Omit<FindOptions<InferAttributes<User>>, "where"> = {};
-    if (transaction !== undefined) {
-      findOptions.transaction = transaction;
-    }
-    const user = await User.findByPk(id, findOptions);
-    if (!user) return null;
+    const client = trx ?? prisma;
 
-    const fields: Partial<User> = {};
-    if (data.email !== undefined) fields.email = data.email;
-    if (data.roleId !== undefined) fields.roleId = data.roleId;
+    const existing = await client.user.findUnique({ where: { id } });
+    if (!existing) return null;
 
-    const updateOptions: InstanceUpdateOptions<InferAttributes<User>> = {};
-    if (transaction !== undefined) {
-      updateOptions.transaction = transaction;
-    }
-    await user.update(fields, updateOptions);
-    return user;
+    const updateData: Prisma.UserUpdateInput = {};
+    if (data.email !== undefined) updateData.email = data.email;
+    if (data.roleId !== undefined) updateData.role = { connect: { id: data.roleId } };
+
+    return client.user.update({
+      where: { id },
+      data: updateData,
+    });
   }
 
-  async delete(id: string, transaction?: Transaction): Promise<void> {
-    const findOptions: Omit<FindOptions<InferAttributes<User>>, "where"> = {};
-    if (transaction !== undefined) {
-      findOptions.transaction = transaction;
-    }
-    const user = await User.findByPk(id, findOptions);
-    if (user) {
-      const destroyOptions: InstanceDestroyOptions = {};
-      if (transaction !== undefined) {
-        destroyOptions.transaction = transaction;
-      }
-      await user.destroy(destroyOptions);
-    }
+  async delete(id: string, trx?: TransactionClient): Promise<void> {
+    const client = trx ?? prisma;
+    await client.user.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
   }
 }

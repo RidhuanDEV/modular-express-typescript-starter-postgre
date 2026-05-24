@@ -1,50 +1,56 @@
-import { Permission } from "./permission.model.js";
-import type { InferAttributes, Transaction } from "sequelize";
+import type { Prisma, Permission } from "@prisma/client";
+import { prisma } from "../../config/prisma.js";
 import type {
   CreatePermissionDto,
   UpdatePermissionDto,
 } from "./permission.schema.js";
 
+type TransactionClient = Prisma.TransactionClient;
+
 export class PermissionRepository {
   async findAll(): Promise<Permission[]> {
-    return Permission.findAll();
+    return prisma.permission.findMany();
   }
 
-  async findById(id: string, trx?: Transaction): Promise<Permission | null> {
-    return Permission.findByPk(id, trx ? { transaction: trx } : undefined);
+  async findById(id: string, trx?: TransactionClient): Promise<Permission | null> {
+    const client = trx ?? prisma;
+    return client.permission.findUnique({ where: { id } });
   }
 
   async findByName(name: string): Promise<Permission | null> {
-    return Permission.findOne({ where: { name } });
+    return prisma.permission.findUnique({ where: { name } });
   }
 
   async create(
     data: CreatePermissionDto,
-    trx?: Transaction,
+    trx?: TransactionClient,
   ): Promise<Permission> {
-    return Permission.create(data, trx ? { transaction: trx } : undefined);
+    const client = trx ?? prisma;
+    return client.permission.create({ data });
   }
 
   async update(
     id: string,
     data: UpdatePermissionDto,
-    trx?: Transaction,
+    trx?: TransactionClient,
   ): Promise<Permission | null> {
-    const record = await Permission.findByPk(
-      id,
-      trx ? { transaction: trx } : undefined,
-    );
-    if (!record) return null;
-    const fields: Partial<InferAttributes<Permission>> = {};
-    if (data.name !== undefined) fields.name = data.name;
-    return record.update(fields, trx ? { transaction: trx } : undefined);
+    const client = trx ?? prisma;
+    const existing = await client.permission.findUnique({ where: { id } });
+    if (!existing) return null;
+
+    const updateData: Prisma.PermissionUpdateInput = {};
+    if (data.name !== undefined) updateData.name = data.name;
+
+    return client.permission.update({ where: { id }, data: updateData });
   }
 
-  async delete(id: string, trx?: Transaction): Promise<boolean> {
-    const count = await Permission.destroy({
-      where: { id },
-      ...(trx ? { transaction: trx } : {}),
-    });
-    return count > 0;
+  async delete(id: string, trx?: TransactionClient): Promise<boolean> {
+    const client = trx ?? prisma;
+    try {
+      await client.permission.delete({ where: { id } });
+      return true;
+    } catch {
+      return false;
+    }
   }
 }

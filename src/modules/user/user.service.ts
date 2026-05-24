@@ -1,5 +1,5 @@
 import { UserRepository } from "./user.repository.js";
-import { sequelize } from "../../config/database.js";
+import { prisma } from "../../config/prisma.js";
 import { cacheService } from "../../core/cache/cache.service.js";
 import { auditService } from "../../core/audit/audit.service.js";
 import { HttpError } from "../../core/errors/http-error.js";
@@ -30,10 +30,8 @@ export class UserService {
     query: SearchUserDto,
   ): Promise<{ data: UserResponseProjection[]; meta: PaginationMeta }> {
     const cacheKey = `${CACHE_PREFIX}:list:${JSON.stringify(query)}`;
-    const cached = await cacheService.get<any>(cacheKey);
-    if (cached) {
-      return cached as { data: UserResponseProjection[]; meta: PaginationMeta };
-    }
+    const cached = await cacheService.get<{ data: UserResponseProjection[]; meta: PaginationMeta }>(cacheKey);
+    if (cached) return cached;
 
     const findOptions = buildFindOptions(query, userQueryConfig);
     const { rows, count } = await repository.findAll(findOptions);
@@ -68,22 +66,25 @@ export class UserService {
   ): Promise<UserResponseDto> {
     userPolicy.canCreate(user);
 
-    const record = await sequelize.transaction(async (trx) => {
-      const created = await repository.create(data, trx);
+    const created = await prisma.$transaction(async (tx) => {
+      const record = await repository.create(data, tx);
       await auditService.persist({
         action: AuditAction.CREATE,
         module: USER_MODULE,
-        entityId: created.id,
+        entityId: record.id,
         userId: user.id,
-        after: created.toJSON(),
+        after: record,
         requestId,
-        trx,
+        trx: tx,
       });
-      return created;
+      return record;
     });
 
     await cacheService.invalidatePattern(`${CACHE_PREFIX}:list:*`);
-    return toUserResponse(record);
+
+    const full = await repository.findById(created.id);
+    if (!full) throw HttpError.internal("Failed to load created user");
+    return toUserResponse(full);
   }
 
   async update(
@@ -96,25 +97,28 @@ export class UserService {
     if (!existing) throw HttpError.notFound("User not found");
     userPolicy.canUpdate(user, existing);
 
-    const record = await sequelize.transaction(async (trx) => {
-      const updated = await repository.update(id, data, trx);
-      if (!updated) throw HttpError.notFound("User not found");
+    const updated = await prisma.$transaction(async (tx) => {
+      const record = await repository.update(id, data, tx);
+      if (!record) throw HttpError.notFound("User not found");
       await auditService.persist({
         action: AuditAction.UPDATE,
         module: USER_MODULE,
         entityId: id,
         userId: user.id,
-        before: existing.toJSON(),
-        after: updated.toJSON(),
+        before: existing,
+        after: record,
         requestId,
-        trx,
+        trx: tx,
       });
-      return updated;
+      return record;
     });
 
     await cacheService.del(`${CACHE_PREFIX}:${id}`);
     await cacheService.invalidatePattern(`${CACHE_PREFIX}:list:*`);
-    return toUserResponse(record);
+
+    const full = await repository.findById(updated.id);
+    if (!full) throw HttpError.internal("Failed to load updated user");
+    return toUserResponse(full);
   }
 
   async delete(id: string, user: JwtUserPayload, requestId?: string): Promise<void> {
@@ -122,16 +126,16 @@ export class UserService {
     if (!existing) throw HttpError.notFound("User not found");
     await userPolicy.canDelete(user, existing);
 
-    await sequelize.transaction(async (trx) => {
-      await repository.delete(id, trx);
+    await prisma.$transaction(async (tx) => {
+      await repository.delete(id, tx);
       await auditService.persist({
         action: AuditAction.DELETE,
         module: USER_MODULE,
         entityId: id,
         userId: user.id,
-        before: existing.toJSON(),
+        before: existing,
         requestId,
-        trx,
+        trx: tx,
       });
     });
 

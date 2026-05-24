@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "./jwt.service.js";
 import { HttpError } from "../errors/http-error.js";
-import { User } from "../../modules/user/user.model.js";
+import { prisma } from "../../config/prisma.js";
 import { cacheService } from "../cache/cache.service.js";
 
 export async function authenticate(
@@ -26,7 +26,10 @@ export async function authenticate(
     let isUserActive = await cacheService.get<boolean>(cacheKey);
 
     if (isUserActive === null) {
-      const user = await User.findByPk(payload.id);
+      const user = await prisma.user.findUnique({
+        where: { id: payload.id },
+        select: { id: true, deletedAt: true },
+      });
       isUserActive = user !== null && user.deletedAt === null;
       // Cache the active status for 60 seconds to avoid hitting database repeatedly
       await cacheService.set(cacheKey, isUserActive, 60);

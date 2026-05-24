@@ -1,11 +1,3 @@
-import { Op } from "sequelize";
-import type {
-  FindOptions,
-  OrderItem,
-  WhereOptions,
-  Includeable,
-} from "sequelize";
-
 // ─── Public Interfaces ───────────────────────────────────────────────────────
 
 /**
@@ -22,69 +14,79 @@ export interface BaseSearchQuery {
   fields?: string | undefined;
 }
 
+export type PrismaOperator =
+  | "equals"
+  | "contains"
+  | "startsWith"
+  | "endsWith"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "in"
+  | "not";
+
 export type FilterType = "string" | "number" | "boolean" | "enum" | "date";
 
 export interface FilterConfig {
-  /** Sequelize model attribute name (usually camelCase). */
+  /** Prisma model field name (camelCase). */
   column: string;
   type: FilterType;
   /**
-   * Sequelize Op symbol. Defaults to Op.eq.
-   * Common values: Op.gte, Op.lte, Op.like, Op.in, Op.ne
+   * Prisma operator. Defaults to "equals".
+   * Common values: "gte", "lte", "contains", "in", "not"
    */
-  operator?: symbol;
+  operator?: PrismaOperator;
 }
 
 export interface QueryBuilderConfig {
   /**
-   * Sequelize model attribute names to search with LIKE when `search` is provided.
+   * Prisma model field names to search with `contains` when `search` is provided.
    * Example: ['name', 'description']
    */
   searchFields?: string[];
 
   /**
-   * Map from query-param key → model attribute filter definition.
-   * Example: { yearMin: { column: 'year', type: 'number', operator: Op.gte } }
+   * Map from query-param key → model field filter definition.
+   * Example: { yearMin: { column: 'year', type: 'number', operator: 'gte' } }
    */
   filters?: Record<string, FilterConfig>;
 
   /**
-   * Allowlist of Sequelize model attribute names that are valid `sortBy` targets.
+   * Allowlist of Prisma model field names that are valid `sortBy` targets.
    * If defined and the requested sort field is not in this list,
-   * the sort silently falls back to 'createdAt' — preventing arbitrary
-   * column exposure and potential index-miss attacks.
-   *
-   * If undefined, any sort field is accepted (backwards-compatible).
-   * Example: ['createdAt', 'updatedAt', 'price', 'name']
+   * the sort silently falls back to 'createdAt'.
    */
   sortableFields?: string[];
 
   /**
    * Allowlist of response/model fields that may be returned via the ?fields= param.
-   * Only fields present in this list are ever selected, preventing
-   * accidental exposure of internal or sensitive columns.
-   *
-   * Keep this aligned with the mapper so field selection remains an API-layer
-   * concern rather than leaking raw database shape.
-   *
-   * Example: ['id', 'name', 'price', 'createdAt']
+   * Only fields present in this list are ever selected.
    */
   selectableFields?: string[];
 
   /**
-   * Default Sequelize includes (eager-loaded associations).
-   * Use this to prevent N+1 queries when the module has relations.
-   *
-   * Example:
-   *   [{ model: ListingImage, as: 'images', attributes: ['id', 'url'] }]
+   * Default Prisma includes (eager-loaded relations).
+   * Example: { role: true } or { role: { include: { permissions: true } } }
    */
-  defaultIncludes?: Includeable[];
+  defaultIncludes?: Record<string, unknown>;
+}
+
+// ─── Result Interfaces ───────────────────────────────────────────────────────
+
+export interface PrismaFindOptions {
+  where: Record<string, unknown>;
+  skip: number;
+  take: number;
+  orderBy: Record<string, string>[];
+  select?: Record<string, boolean>;
+  include?: Record<string, unknown>;
 }
 
 // ─── Builder ─────────────────────────────────────────────────────────────────
 
 /**
- * Converts a parsed SearchDto into Sequelize FindOptions.
+ * Converts a parsed SearchDto into Prisma-compatible query options.
  *
  * @param query  The parsed search DTO (must extend BaseSearchQuery).
  * @param config Query builder configuration for this module.
@@ -92,15 +94,13 @@ export interface QueryBuilderConfig {
 export function buildFindOptions<Q extends BaseSearchQuery>(
   query: Q,
   config: QueryBuilderConfig = {},
-): FindOptions {
+): PrismaFindOptions {
   const { page, limit, sortBy, search, fields, orderBy } = query;
 
   // ── Pagination ──────────────────────────────────────────────────────────
-  const offset = (page - 1) * limit;
+  const skip = (page - 1) * limit;
 
   // ── Sorting with allowlist ───────────────────────────────────────────────
-  // If sortableFields is defined, reject unknown sortBy values by falling back
-  // to createdAt — this prevents arbitrary column exposure and index-miss risks.
   const rawSortField = sortBy ? sortBy : "createdAt";
   const sortField =
     config.sortableFields && config.sortableFields.length > 0
@@ -108,17 +108,22 @@ export function buildFindOptions<Q extends BaseSearchQuery>(
         ? rawSortField
         : "createdAt"
       : rawSortField;
-  const sortDir = orderBy === "desc" ? "DESC" : "ASC";
-  const orders: OrderItem[] = [[sortField, sortDir]];
+  const sortDir = orderBy === "desc" ? "desc" : "asc";
+  const orderByClause: Record<string, string>[] = [{ [sortField]: sortDir }];
 
   // ── WHERE clause ─────────────────────────────────────────────────────────
-  const where: Record<string | symbol, unknown> = {};
+  const where: Record<string, unknown> = {};
+  const orConditions: Record<string, unknown>[] = [];
 
   // Full-text search across configured fields
   if (search != null && search.length > 0 && config.searchFields?.length) {
-    where[Op.or] = config.searchFields.map((col) => ({
-      [col]: { [Op.like]: `%${search}%` },
-    }));
+    for (const col of config.searchFields) {
+      orConditions.push({ [col]: { contains: search, mode: "insensitive" } });
+    }
+  }
+
+  if (orConditions.length > 0) {
+    where["OR"] = orConditions;
   }
 
   // Typed filter fields
@@ -130,25 +135,27 @@ export function buildFindOptions<Q extends BaseSearchQuery>(
       if (raw === undefined || raw === null) continue;
 
       const coerced = coerceFilterValue(raw, filterCfg.type);
-      const op = filterCfg.operator ?? Op.eq;
+      const op = filterCfg.operator ?? "equals";
 
-      const existing = where[filterCfg.column];
-      if (
-        existing !== undefined &&
-        typeof existing === "object" &&
-        existing !== null
-      ) {
-        (existing as Record<symbol, unknown>)[op] = coerced;
+      if (op === "equals") {
+        where[filterCfg.column] = coerced;
       } else {
-        where[filterCfg.column] = { [op]: coerced };
+        const existing = where[filterCfg.column];
+        if (
+          existing !== undefined &&
+          typeof existing === "object" &&
+          existing !== null
+        ) {
+          (existing as Record<string, unknown>)[op] = coerced;
+        } else {
+          where[filterCfg.column] = { [op]: coerced };
+        }
       }
     }
   }
 
-  // ── Field selection (attributes allowlist) ───────────────────────────────
-  // Only allow fields explicitly listed in selectableFields to be selected.
-  // This prevents internal/sensitive columns from being exposed via ?fields=.
-  let attributes: string[] | undefined;
+  // ── Field selection ───────────────────────────────────────────────────
+  let select: Record<string, boolean> | undefined;
   if (fields && config.selectableFields?.length) {
     const requested = Array.from(
       new Set(
@@ -161,19 +168,30 @@ export function buildFindOptions<Q extends BaseSearchQuery>(
     const filtered = requested.filter((f) =>
       config.selectableFields!.includes(f),
     );
-    if (filtered.length > 0) attributes = filtered;
+    if (filtered.length > 0) {
+      select = {};
+      for (const f of filtered) {
+        select[f] = true;
+      }
+    }
   }
 
-  return {
-    where: where as WhereOptions,
-    offset,
-    limit,
-    order: orders,
-    ...(attributes ? { attributes } : {}),
-    ...(config.defaultIncludes?.length
-      ? { include: config.defaultIncludes }
-      : {}),
+  const result: PrismaFindOptions = {
+    where,
+    skip,
+    take: limit,
+    orderBy: orderByClause,
   };
+
+  if (select) {
+    result.select = select;
+  }
+
+  if (config.defaultIncludes && Object.keys(config.defaultIncludes).length > 0) {
+    result.include = config.defaultIncludes;
+  }
+
+  return result;
 }
 
 // ─── Internal helpers ────────────────────────────────────────────────────────

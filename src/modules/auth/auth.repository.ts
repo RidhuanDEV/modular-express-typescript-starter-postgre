@@ -1,23 +1,24 @@
-import { User } from "../user/user.model.js";
-import { Role } from "../roles/role.model.js";
-import type { Transaction } from "sequelize";
+import type { Prisma, User, Role } from "@prisma/client";
+import { prisma } from "../../config/prisma.js";
+
+type TransactionClient = Prisma.TransactionClient;
 
 export class AuthRepository {
   async findByEmail(email: string): Promise<User | null> {
-    return User.findOne({ where: { email } });
+    return prisma.user.findUnique({ where: { email } });
   }
 
   async findById(id: string): Promise<User | null> {
-    return User.findByPk(id);
+    return prisma.user.findUnique({ where: { id } });
   }
 
   async emailExists(email: string): Promise<boolean> {
-    const count = await User.count({ where: { email } });
+    const count = await prisma.user.count({ where: { email } });
     return count > 0;
   }
 
   async findRoleByName(name: string): Promise<Role | null> {
-    return Role.findOne({ where: { name } });
+    return prisma.role.findUnique({ where: { name } });
   }
 
   async createUser(
@@ -26,8 +27,9 @@ export class AuthRepository {
       password: string;
       roleId: string;
     },
-    trx?: Transaction,
+    trx?: TransactionClient,
   ): Promise<User> {
-    return User.create(data, trx ? { transaction: trx } : undefined);
+    const client = trx ?? prisma;
+    return client.user.create({ data });
   }
 }

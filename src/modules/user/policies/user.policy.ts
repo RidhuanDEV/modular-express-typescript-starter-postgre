@@ -1,7 +1,7 @@
 import type { JwtUserPayload } from "../../../types/index.js";
-import type { User } from "../user.model.js";
+import type { User } from "@prisma/client";
 import { HttpError } from "../../../core/errors/http-error.js";
-import { Role } from "../../roles/role.model.js";
+import { prisma } from "../../../config/prisma.js";
 
 /**
  * Resource-level authorization policy for User.
@@ -32,7 +32,9 @@ export class UserPolicy {
     }
 
     // 2. Ensure only administrators are allowed to delete users
-    const requesterRole = await Role.findByPk(user.roleId);
+    const requesterRole = await prisma.role.findUnique({
+      where: { id: user.roleId },
+    });
     if (!requesterRole || requesterRole.name !== "admin") {
       throw HttpError.forbidden("Only administrators are allowed to delete user accounts.");
     }

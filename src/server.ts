@@ -1,8 +1,7 @@
 import { app } from "./app.js";
 import { env } from "./config/env.js";
-import { sequelize } from "./config/database.js";
+import { prisma, disconnectPrisma } from "./config/prisma.js";
 import { redis } from "./config/redis.js";
-import { loadModels } from "./database/models/index.js";
 import { closeQueues } from "./core/queue/queue.service.js";
 import { logger } from "./core/logger/logger.js";
 
@@ -18,9 +17,7 @@ process.on("unhandledRejection", (reason: unknown) => {
 });
 
 async function bootstrap(): Promise<void> {
-  await loadModels(sequelize);
-
-  await sequelize.authenticate();
+  await prisma.$connect();
   logger.info("Database connected");
 
   const server = app.listen(env.PORT, () => {
@@ -32,7 +29,7 @@ async function bootstrap(): Promise<void> {
 
     server.close(async () => {
       await closeQueues();
-      await sequelize.close();
+      await disconnectPrisma();
       redis.disconnect();
       logger.info("Server shut down");
       process.exit(0);

@@ -1,5 +1,5 @@
 import { PermissionRepository } from "./permission.repository.js";
-import { sequelize } from "../../config/database.js";
+import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../core/errors/http-error.js";
 import { cacheService } from "../../core/cache/cache.service.js";
 import { auditService } from "../../core/audit/audit.service.js";
@@ -46,17 +46,17 @@ export class PermissionService {
     if (existing)
       throw HttpError.conflict(`Permission '${dto.name}' already exists`);
 
-    const permission = await sequelize.transaction(async (trx) => {
-      const created = await repository.create(dto, trx);
+    const permission = await prisma.$transaction(async (tx) => {
+      const created = await repository.create(dto, tx);
 
       await auditService.persist({
         action: AuditAction.CREATE,
         module: PERMISSION_MODULE,
         entityId: created.id,
         userId: user.id,
-        after: created.toJSON(),
+        after: created,
         requestId,
-        trx,
+        trx: tx,
       });
 
       return created;
@@ -82,8 +82,8 @@ export class PermissionService {
       }
     }
 
-    const permission = await sequelize.transaction(async (trx) => {
-      const updated = await repository.update(id, dto, trx);
+    const permission = await prisma.$transaction(async (tx) => {
+      const updated = await repository.update(id, dto, tx);
       if (!updated) throw HttpError.notFound("Permission not found");
 
       await auditService.persist({
@@ -91,10 +91,10 @@ export class PermissionService {
         module: PERMISSION_MODULE,
         entityId: id,
         userId: user.id,
-        before: existingPermission.toJSON(),
-        after: updated.toJSON(),
+        before: existingPermission,
+        after: updated,
         requestId,
-        trx,
+        trx: tx,
       });
 
       return updated;
@@ -111,8 +111,8 @@ export class PermissionService {
     const existingPermission = await repository.findById(id);
     if (!existingPermission) throw HttpError.notFound("Permission not found");
 
-    await sequelize.transaction(async (trx) => {
-      const deleted = await repository.delete(id, trx);
+    await prisma.$transaction(async (tx) => {
+      const deleted = await repository.delete(id, tx);
       if (!deleted) throw HttpError.notFound("Permission not found");
 
       await auditService.persist({
@@ -120,9 +120,9 @@ export class PermissionService {
         module: PERMISSION_MODULE,
         entityId: id,
         userId: user.id,
-        before: existingPermission.toJSON(),
+        before: existingPermission,
         requestId,
-        trx,
+        trx: tx,
       });
     });
 
