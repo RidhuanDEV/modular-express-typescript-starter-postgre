@@ -12,7 +12,8 @@
     "make:crud": "tsx src/scripts/generate-crud.ts",
     "prisma:migrate": "npx prisma migrate dev",
     "prisma:generate": "npx prisma generate",
-    "prisma:studio": "npx prisma studio"
+    "prisma:studio": "npx prisma studio",
+    "api-docs": "tsx src/scripts/generate-swagger-schemas.ts"
   },
   "keywords": [
     "express",

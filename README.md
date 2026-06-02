@@ -4,6 +4,12 @@ An opinionated, production-ready backend starter kit for teams that want a clean
 
 This repository is designed to be a **robust foundation**, providing essential infrastructure and core modules so you can focus on building your domain logic instead of repeating boilerplate.
 
+> [!NOTE]  
+> **Looking for the Architectural Manual?**  
+> Read the **[DEVELOPER-GUIDE.md](file:///d:/Ridhuan%20Ngoding%20Moment/React/updates-template/modular-express-typescript-starter-postgre/DEVELOPER-GUIDE.md)** for manual module building instructions, strict type guidelines, and deep explanations of the codebase layers.
+
+---
+
 ## 🚀 Key Features
 
 - **Express 5 + TypeScript Strict**: Predictable application code with the latest framework features.
@@ -77,7 +83,7 @@ src/modules/<feature>/
 
 ## 🛠️ Tech Stack
 
-- **Runtime**: Node.js 24+
+- **Runtime**: Node.js **22+** (Required for native, time-ordered UUIDv7 generation in application memory)
 - **Framework**: Express 5
 - **Language**: TypeScript (Strict Mode)
 - **Database**: PostgreSQL 18
@@ -109,7 +115,12 @@ src/modules/<feature>/
    npm run seed
    ```
 
-4. **Run Development Server**:
+4. **Synchronize Zod Schemas to Swagger**:
+   ```bash
+   npm run api-docs
+   ```
+
+5. **Run Development Server**:
    ```bash
    npm run dev
    ```
@@ -123,7 +134,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-This will spin up the application, PostgreSQL 18, and Redis 8 automatically. The app container runs `prisma migrate deploy` and the production seed before starting, creating the base `admin` and `user` roles, core permissions, and the default accounts from `ADMIN_EMAIL` / `ADMIN_PASSWORD` and `USER_EMAIL` / `USER_PASSWORD`.
+This will spin up the application, PostgreSQL 18, and Redis 8 automatically. The app container runs `prisma migrate deploy`, the production seed, and swagger schema synchronization before starting.
 
 ## ⚡ Productivity: Modules & CRUD Generator
 
@@ -189,16 +200,33 @@ When expanding the starter, follow these strict guidelines to maintain codebase 
 
 ## 📜 API Documentation & OpenAPI Swagger
 
-The project features fully automated API documentation using **Swagger / OpenAPI 3.0**. 
+The project features fully automated API documentation using **Swagger / OpenAPI 3.0** with several advanced enhancements:
 
 ### 1. How to View
 * **Swagger UI Interactive Interface**: Access `http://localhost:3000/docs` in your browser when the server is running.
 * **JSON Definition**: Access `http://localhost:3000/docs.json` to export the raw OpenAPI specification.
 
-### 2. How to Add Docs Automatically
-The documentation engine (`src/docs/swagger.ts`) automatically scans all routes files under feature modules: `src/modules/**/*.routes.ts`. 
+### 2. Zod to Swagger Schema Sync
+Instead of writing Swagger schemas by hand in YAML blocks, export Zod schemas ending in `Schema` (e.g. `createUserSchema`) inside any `*.schema.ts` file. Run:
+```bash
+npm run api-docs
+```
+This extracts and maps your validation structures into JSON schemas inside `src/docs/schemas.json`, where they can be referenced inside route YAML annotations via standard refs:
+```yaml
+# In your routes JSDoc:
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        $ref: '#/components/schemas/CreateUser'
+```
 
-To document a new route, simply write standard **YAML OpenAPI annotations** directly inside a JSDoc block in your route file:
+### 3. Dynamic Modular specs Dropdown
+Rather than putting all endpoints on a single long page, the engine (`src/docs/swagger.ts`) scans feature directories at runtime and serves isolated specifications dynamically under `/docs/specs/:moduleName.json`. Toggles between the global "All Modules" spec and target modules directly in the top-bar dropdown.
+
+### 4. How to Add Docs Automatically
+The documentation engine automatically scans all routes files under feature modules: `src/modules/**/*.routes.ts`. To document a new route, simply write standard **YAML OpenAPI annotations** directly inside a JSDoc block in your route file:
 
 ```typescript
 /**
@@ -221,11 +249,9 @@ To document a new route, simply write standard **YAML OpenAPI annotations** dire
  *         description: Successfully fetched product details
  *       404:
  *         description: Product not found
- */
+ * */
 router.get('/:id', authenticate, controller.getById);
 ```
-
-As soon as you restart the development server (`npm run dev`), the new endpoint, parameters, authentication scopes, and response schemas will instantly appear in the **Swagger UI** under the `/docs` page!
 
 ---
 
