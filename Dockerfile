@@ -1,6 +1,7 @@
 FROM node:24-alpine AS builder
 WORKDIR /app
 ENV DATABASE_URL=postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+ENV JWT_SECRET=build_only_secret_do_not_use_at_runtime_1234567890
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY prisma ./prisma
@@ -20,9 +21,7 @@ COPY prisma ./prisma
 COPY prisma.config.ts ./
 RUN npx prisma generate
 COPY --from=builder /app/dist ./dist
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
 EXPOSE 3000
 USER node
-ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["node", "dist/server.js"]

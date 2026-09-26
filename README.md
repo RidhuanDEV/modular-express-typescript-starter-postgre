@@ -1,259 +1,73 @@
-# Modular Express TypeScript Backend Starter
+# Modular Express TypeScript Starter
 
-An opinionated, production-ready backend starter kit for teams that want a clean, modular Express codebase with TypeScript strict mode, Prisma ORM 7, Zod validation, JWT authentication, RBAC, caching, and a built-in CRUD generator.
+Express 5, TypeScript strict, Prisma/PostgreSQL, Zod, JWT/RBAC, audit, optional Redis cache, rate limiting, local/S3 uploads, and OpenAPI generated from endpoint contracts.
 
-This repository is designed to be a **robust foundation**, providing essential infrastructure and core modules so you can focus on building your domain logic instead of repeating boilerplate.
+## Create a new project
 
-> [!NOTE]  
-> **Looking for the Architectural Manual?**  
-> Read the **[DEVELOPER-GUIDE.md](file:///d:/Ridhuan%20Ngoding%20Moment/React/updates-template/modular-express-typescript-starter-postgre/DEVELOPER-GUIDE.md)** for manual module building instructions, strict type guidelines, and deep explanations of the codebase layers.
+After the public initializer is published, run `npm create ridhuanbackendtemplate@latest my-api`. The wizard writes a fresh `.env`, generates secrets, and installs dependencies. Use `--no-install` to defer installation or `--yes` for defaults. It refuses to overwrite a nonempty directory. The npm package carries a fixed snapshot of the template, so no GitHub checkout is needed. Configure PostgreSQL, run `npx prisma generate`, `npx prisma migrate deploy`, `npm run seed`, and `npm run dev`; or use Docker Compose as below. The generated project is private by default.
 
----
+## Run manually
 
-## 🚀 Key Features
+Requires Node 24+, PostgreSQL 18, and a `.env` copied from `.env.example`. Redis is optional when `CACHE_ENABLED=false` and `RATE_LIMIT_STORE=memory`.
 
-- **Express 5 + TypeScript Strict**: Predictable application code with the latest framework features.
-- **Feature-Based Modular Architecture**: Clean separation of concerns under `src/modules/*`.
-- **Prisma ORM 7**: Type-safe database queries and automated schema migrations.
-- **Zod Validation**: Type-safe request payloads and query contracts.
-- **JWT Auth + RBAC**: Secure authentication and fine-grained Role-Based Access Control.
-- **Built-in Audit Logging**: Automatic tracking of sensitive operations and resource changes.
-- **Advanced Caching**: Redis-backed cache layer for performance and scalability.
-- **Background Jobs**: BullMQ integration for reliable asynchronous processing.
-- **API Documentation**: Automated Swagger/OpenAPI documentation.
-- **Productivity Tools**: CLI CRUD generator to bootstrap new modules in seconds.
-
-## 📁 Project Structure
-
-```text
-prisma/
-└── schema.prisma         # Prisma database schema definition
-src/
-├── app.ts                # App entry point (Express configuration)
-├── server.ts             # Server entry point (Port listening & shutdown)
-├── config/               # Global configurations (Prisma, Redis, Environment)
-├── constants/            # Cross-cutting string literals (Audit, Permissions, Modules)
-├── core/                 # Shared infrastructure (The "Engine")
-│   ├── audit/            # Centralized audit logging logic
-│   ├── auth/             # JWT & RBAC middleware/services
-│   ├── cache/            # Redis caching service
-│   ├── database/         # Shared DB utilities (Query builder, etc.)
-│   ├── errors/           # Custom HTTP error handlers
-│   ├── http/             # Request context and HTTP utilities
-│   ├── logger/           # Structured logging (Pino)
-│   ├── middleware/       # Global middlewares (Rate limit, Validation, Errors)
-│   ├── queue/            # Background job processing (BullMQ)
-│   └── validation/       # Zod-specific utilities and error mapping
-├── docs/                 # OpenAPI/Swagger definition files
-├── modules/              # Feature modules (Domain logic)
-├── routes/               # Global route registration index
-├── scripts/              # Internal utility scripts (CRUD Generator)
-├── types/                # Project-wide TypeScript type declarations
-└── utils/                # Small, pure helper functions (Pagination, Response)
+```sh
+npm ci
+npx prisma generate
+npx prisma migrate deploy
+npm run seed
+npm run dev
 ```
 
-## 🏗️ Layered Architecture
+`/live` checks that HTTP is serving, and `/ready` checks PostgreSQL plus Redis when Redis is the required rate-limit store. `/health` remains a lightweight compatibility endpoint. Health endpoints bypass the public request quota so probes cannot exhaust it. Point deployment health probes to `/ready`. `/docs` serves Swagger UI with all-modules and per-module views; `/docs/openapi.json` serves the complete OpenAPI 3.1 specification.
 
-Each feature module under `src/modules/` follows a strict layered pattern:
+## Run in containers
 
-```text
-src/modules/<feature>/
-├── dto/                  # Data Transfer Objects (Request/Response contracts)
-├── mappers/              # Transform Models to DTOs
-├── policies/             # Authorization rules for this specific resource
-├── queries/              # Specialized query configurations (Filter/Sort/Search)
-├── <feature>.repository.ts # Direct database access layer
-├── <feature>.service.ts    # Business logic & orchestration
-├── <feature>.controller.ts # HTTP request/response handling
-├── <feature>.routes.ts     # Route definitions & resource-specific middleware
-└── <feature>.schema.ts     # Zod validation schemas
-```
+Docker Compose is optional; manual startup above remains supported. `docker-compose.yml` defines the services; `docker-compose.override.yml` exposes host ports through `APP_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, and `MINIO_PORT`.
 
-### Responsibility Breakdown
-
-| Layer | Responsibility |
-| :--- | :--- |
-| **Routes** | Endpoint definitions, middleware chain, and Swagger annotations. |
-| **Controller** | Acts as an adapter, parsing requests and sending responses. No business logic here. |
-| **Service** | Orchestrates business logic, handles transactions, audit logs, and cache management. |
-| **Repository** | Isolated database operations using the Prisma client. |
-| **Schema** | Uses Zod to enforce strict input validation. |
-| **DTO/Mapper** | Ensures the API contract is decoupled from the database schema. |
-| **Policy** | Contains reusable authorization logic (e.g., `canUpdateThisResource`). |
-
-## 🛠️ Tech Stack
-
-- **Runtime**: Node.js **22+** (Required for native, time-ordered UUIDv7 generation in application memory)
-- **Framework**: Express 5
-- **Language**: TypeScript (Strict Mode)
-- **Database**: PostgreSQL 18
-- **ORM**: Prisma 7
-- **Caching**: Redis 8
-- **Queue**: BullMQ
-- **Validation**: Zod
-- **Logging**: Pino
-- **Documentation**: Swagger UI
-
-## 🏁 Getting Started
-
-### Local Setup
-
-1. **Install Dependencies**:
-   ```bash
-   npm install
-   ```
-
-2. **Configure Environment**:
-   ```bash
-   cp .env.example .env
-   # Edit .env with your local PostgreSQL and Redis credentials
-   ```
-
-3. **Initialize Database**:
-   ```bash
-   npx prisma migrate dev
-   npm run seed
-   ```
-
-4. **Synchronize Zod Schemas to Swagger**:
-   ```bash
-   npm run api-docs
-   ```
-
-5. **Run Development Server**:
-   ```bash
-   npm run dev
-   ```
-
-### Docker Setup
-```bash
+```sh
 cp .env.example .env
-```
-
-```bash
 docker compose up --build
+docker compose exec app npm run seed:prod
 ```
 
-This will spin up the application, PostgreSQL 18, and Redis 8 automatically. The app container runs `prisma migrate deploy`, the production seed, and swagger schema synchronization before starting.
+The default stack is app + PostgreSQL. Compose runs the `migrate` service once and starts the app only after migration succeeds; each app replica does not run migrations. Set `CACHE_ENABLED=true` and `RATE_LIMIT_STORE=redis`, then start with `docker compose --profile redis up --build` for Redis. For MinIO, set `UPLOAD_STORAGE=s3` and start with `docker compose --profile minio up --build`; `minio-init` creates the bucket. Both profiles can be combined. For an external S3 service, set `S3_ENDPOINT_DOCKER` and skip the MinIO profile. Run seed explicitly after the first migration. Outside Compose, run `npx prisma migrate deploy` as one release job before starting new replicas.
 
-## ⚡ Productivity: Modules & CRUD Generator
+Set `CORS_ORIGINS` to a comma-separated list of browser origins. It is required when `NODE_ENV=production`; development defaults to `http://localhost:5173,http://localhost:3000` if omitted. No wildcard or credentialed CORS is enabled. Requests without `Origin` remain available to server-side clients.
 
-The project ships with several core modules already implemented:
-- `auth`: Authentication (login, register, token management)
-- `user`: User account management
-- `roles` & `permissions`: Granular RBAC system
+Uploaded local files use a persistent Compose volume. When running manually, `UPLOAD_LOCAL_DIR` selects the directory. The template accepts PNG, JPEG, and PDF with signature checks; `UPLOAD_ALLOWED_MIME` can narrow this list. `POST /api/upload` uses multipart field `file`; `GET /api/upload/:id` returns metadata. Both require JWT and `manage_users` permission. No public file download route is enabled.
 
-To bootstrap a new feature module in seconds:
-```bash
-npm run make:crud <feature-name>
+For orphaned objects after a failed database write or process crash, run `npm run uploads:cleanup` to list candidates older than `UPLOAD_ORPHAN_GRACE_HOURS`. Review them, then run `npm run uploads:cleanup -- --apply` to delete those without a metadata row. The script operates on the configured local directory or S3 bucket and skips keys outside the template's UUID format.
+
+## Endpoint policies
+
+`src/core/http/endpoint-registry.ts` is the source of method, path, access, audit, rate limit, cache, request schema, response schema, and OpenAPI metadata. Every endpoint must appear there and be mounted once; startup fails if a registered endpoint is missing. `src/core/http/mount-endpoint.ts` applies validation and middleware. `npm run make:crud product` adds a scaffold to the registry and app; fill in its Prisma model, Zod fields, response contract, and business mapping before use.
+
+The defaults in the registry can be changed through `ENDPOINT_POLICIES_JSON` in `.env`, then redeployed. Example:
+
+```dotenv
+ENDPOINT_POLICIES_JSON='{"user.get":{"cache":"off","rateLimit":"internal","audit":"optional"}}'
 ```
 
-The CLI generator automatically creates a complete, type-safe feature structure. Generated `*.routes.ts` files are auto-discovered by `src/routes/index.ts`, so restarting the dev server exposes the new API path after the Prisma model exists and the client has been regenerated.
-1. **Schema** (`<feature>.schema.ts`): Zod schemas for validating client payloads.
-2. **DTOs** (`dto/*.ts`): Strict request/response types.
-3. **Repository** (`<feature>.repository.ts`): Isolated data access interface.
-4. **Service** (`<feature>.service.ts`): Orchestrates transactions, cache invalidation, and audit logging.
-5. **Controller** (`<feature>.controller.ts`): Handles HTTP routing using generic Express `Request` types without typecasting.
-6. **Routes** (`<feature>.routes.ts`): Direct route mapping using arrow functions (no `.bind()`).
-7. **Policy** (`policies/<feature>.policy.ts`): Fine-grained resource-level ownership controls.
-8. **Query** (`queries/<feature>.query.ts`): Allowlist-driven query builder settings (safely preventing index-misses).
-9. **Mapper** (`mappers/<feature>.mapper.ts`): Decouples database entities from HTTP response contracts.
+Unknown endpoint IDs and invalid values fail at startup. `required` audit is written in the same Prisma transaction as a mutation and rejects the response if no audit is written. `optional` is best effort and logs write failures. `none` creates no activity row. GET endpoints changed to `optional` produce a metadata-only READ entry; changing a GET to `required` requires a service audit producer and is rejected by default. Snapshots redact secret-named fields. Historical audit JSON is redacted by the new migration.
 
----
+Rate limits use `auth`, `public`, and `internal`, each configured with `RATE_LIMIT_*_WINDOW_MS/MAX`. The public limiter also protects authenticated routes before JWT parsing; the internal limiter then keys by user. Configure `TRUST_PROXY_HOPS` only for trusted reverse proxies. Memory rate limiting is suitable for one app instance. Set `APP_INSTANCE_COUNT` and use `RATE_LIMIT_STORE=redis` for multiple app instances. When the configured Redis limiter fails, auth requests fail closed while public/internal limiters pass through; monitor the Redis error logs.
 
-## 🧩 Architectural Decision Records & Edge Cases
+Set `CACHE_ENABLED=true` to activate response data caching on registry endpoints marked `read`. Redis is best effort for the cache; DB reads continue when unavailable. Authorization checks always query PostgreSQL so user/permission changes do not depend on cache invalidation. BullMQ jobs still require Redis when used.
 
-When expanding the starter, follow these strict guidelines to maintain codebase health:
+## Time contract and migration
 
-### 1. Edge Case: Adding New Actions/Operations in the Same Module
-* **Problem**: You need to add a specialized action that doesn't fit standard CRUD (e.g., `/users/:id/suspend` or `/users/:id/reset-password`).
-* **Solution**: **Do NOT create a separate module.** Keep it encapsulated within the existing module:
-  * **Schema**: Add a `suspendUserSchema` or `resetPasswordSchema` inside `user.schema.ts`.
-  * **Controller**: Add an arrow-function method `suspend = async (req: Request, res: Response, next: NextFunction): Promise<void> => { ... }`.
-  * **Service**: Implement `suspend(id, reason, user, requestId)` wrapping the state change and audit log inside a transaction.
-  * **Routes**: Register `router.put('/:id/suspend', authenticate, requirePermission(USER_PERMISSIONS.UPDATE), validate({ body: suspendUserSchema }), controller.suspend)`.
+Database instants use `timestamptz(3)` and API timestamps use ISO 8601 UTC. `src/core/time/time.ts` parses instants with explicit offset and formats in validated IANA zones such as `Asia/Jakarta`, `Asia/Makassar`, `Asia/Jayapura`, or overseas zones. Client display should use the viewer's zone. Existing `timestamp` values are interpreted as **UTC** by migration `20260922120000_endpoint_foundation`; verify the source timezone and take a backup before running it against a populated production database.
 
-### 2. Edge Case: Cross-Module Orchestration (Multi-Entity Operations)
-* **Problem**: Creating a resource in Module A must automatically trigger actions or writes in Module B (e.g., registering a User requires creating a Billing Profile, writing to Audit Logs, and sending a welcome email).
-* **Solution**:
-  * Keep the **Controller clean**. The controller must only invoke the primary module's service.
-  * **Orchestrate inside the Service**: The primary service (e.g., `UserService`) should import the secondary services/repositories and execute them inside its transaction.
-  * **Asynchronous Offloading**: For non-blocking operations like sending emails or notifying external APIs, offload them to background jobs (using `src/core/queue/`) after the transaction successfully commits.
+## API documentation and checks
 
-### 3. Edge Case: Custom Complex DB Queries
-* **Problem**: A query needs complex aggregations or multi-table joins that are difficult or slow to model in standard Prisma queries.
-* **Solution**:
-  * Add a custom method inside `<feature>.repository.ts`.
-  * Write raw SQL queries using `prisma.$queryRaw` rather than forcing Prisma ORM helper functions.
-  * Ensure the output is mapped back to a predictable structure inside `<feature>.mapper.ts` to maintain a stable API contract.
-
-## 🚢 Deployment
-
-1. **Build the project**:
-   ```bash
-   npm run build
-   ```
-2. **Start production server**:
-   ```bash
-   npm start
-   ```
-
-## 📜 API Documentation & OpenAPI Swagger
-
-The project features fully automated API documentation using **Swagger / OpenAPI 3.0** with several advanced enhancements:
-
-### 1. How to View
-* **Swagger UI Interactive Interface**: Access `http://localhost:3000/docs` in your browser when the server is running.
-* **JSON Definition**: Access `http://localhost:3000/docs.json` to export the raw OpenAPI specification.
-
-### 2. Zod to Swagger Schema Sync
-Instead of writing Swagger schemas by hand in YAML blocks, export Zod schemas ending in `Schema` (e.g. `createUserSchema`) inside any `*.schema.ts` file. Run:
-```bash
-npm run api-docs
-```
-This extracts and maps your validation structures into JSON schemas inside `src/docs/schemas.json`, where they can be referenced inside route YAML annotations via standard refs:
-```yaml
-# In your routes JSDoc:
-requestBody:
-  required: true
-  content:
-    application/json:
-      schema:
-        $ref: '#/components/schemas/CreateUser'
+```sh
+npm run build
+npm run api-docs:check
+npx prisma validate
+docker compose config --quiet
+npm run verify:template
 ```
 
-### 3. Dynamic Modular specs Dropdown
-Rather than putting all endpoints on a single long page, the engine (`src/docs/swagger.ts`) scans feature directories at runtime and serves isolated specifications dynamically under `/docs/specs/:moduleName.json`. Toggles between the global "All Modules" spec and target modules directly in the top-bar dropdown.
+`npm run build` compiles TypeScript and writes `dist/docs/openapi.json`. Runtime docs come from the same typed registry and Zod schemas. No OpenAPI JSDoc annotations or manual schema JSON synchronization are needed. See [DEVELOPER-GUIDE.md](DEVELOPER-GUIDE.md) for the controller/service pattern and rollout notes.
 
-### 4. How to Add Docs Automatically
-The documentation engine automatically scans all routes files under feature modules: `src/modules/**/*.routes.ts`. To document a new route, simply write standard **YAML OpenAPI annotations** directly inside a JSDoc block in your route file:
-
-```typescript
-/**
- * @openapi
- * /products/{id}:
- *   get:
- *     tags: [Product]
- *     summary: Retrieve a single product by UUID
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Successfully fetched product details
- *       404:
- *         description: Product not found
- * */
-router.get('/:id', authenticate, controller.getById);
-```
-
----
-
-## 🏥 Health Check
-* The health check endpoint is available at `/health` to verify server, database, and cache connectivity.
+GitHub Actions also tests fresh and upgrade migrations against PostgreSQL 18, builds the Docker image, and smoke-tests the packed npm initializer. `create-ridhuanbackendtemplate` is released by `.github/workflows/publish.yml` through npm trusted publishing after its publisher is registered in npm. Run `npm pack --dry-run` in the initializer directory to inspect the files before a release.

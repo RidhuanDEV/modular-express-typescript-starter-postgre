@@ -3,7 +3,7 @@ import { env } from "../../config/env.js";
 import type { JwtUserPayload } from "../../types/index.js";
 
 export function signToken(payload: JwtUserPayload): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "24h" });
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "15m" });
 }
 
 export function verifyToken(token: string): JwtUserPayload {

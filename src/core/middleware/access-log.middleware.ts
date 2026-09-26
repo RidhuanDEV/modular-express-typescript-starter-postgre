@@ -16,12 +16,12 @@ export function accessLogMiddleware(
       {
         requestId: req.requestId,
         method: req.method,
-        url: req.originalUrl || req.url,
+        path: req.path,
         status: res.statusCode,
         responseTimeMs: parseFloat(timeMs),
         ip: req.ip,
       },
-      `${req.method} ${req.originalUrl || req.url} ${res.statusCode} - ${timeMs}ms`,
+      `${req.method} ${req.path} ${res.statusCode} - ${timeMs}ms`,
     );
   });
 

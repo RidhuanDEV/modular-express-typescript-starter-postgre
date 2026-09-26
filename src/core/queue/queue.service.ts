@@ -46,21 +46,21 @@ import { logger } from "../logger/logger.js";
  * - CRUD, validation, lightweight queries, transactional audit
  */
 
-const redisUrl = new URL(env.REDIS_URL);
+const redisUrl = env.REDIS_URL ? new URL(env.REDIS_URL) : null;
 const redisDatabase =
-  redisUrl.pathname.length > 1 ? Number(redisUrl.pathname.slice(1)) : undefined;
+  redisUrl && redisUrl.pathname.length > 1 ? Number(redisUrl.pathname.slice(1)) : undefined;
 
 const connection: ConnectionOptions = {
-  host: redisUrl.hostname,
-  port: Number(redisUrl.port) || 6379,
-  ...(redisUrl.username
+  host: redisUrl?.hostname ?? "127.0.0.1",
+  port: Number(redisUrl?.port) || 6379,
+  ...(redisUrl?.username
     ? { username: decodeURIComponent(redisUrl.username) }
     : {}),
-  ...(redisUrl.password
+  ...(redisUrl?.password
     ? { password: decodeURIComponent(redisUrl.password) }
     : {}),
   ...(Number.isFinite(redisDatabase) ? { db: redisDatabase } : {}),
-  ...(redisUrl.protocol === "rediss:" ? { tls: {} } : {}),
+  ...(redisUrl?.protocol === "rediss:" ? { tls: {} } : {}),
 };
 
 const DEFAULT_JOB_OPTIONS = {
@@ -97,6 +97,7 @@ function assertQueueName(name: string): void {
  * the application does not enqueue any jobs.
  */
 export function getQueue(name: string): Queue {
+  if (!env.REDIS_URL) throw new Error("Redis is required to use queues");
   assertQueueName(name);
 
   let queue = queues.get(name);

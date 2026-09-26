@@ -1,16 +1,17 @@
 /**
- * Shape of a CRUD audit log record.
- * Maps to the CrudAuditLog Prisma model.
+ * Shape of a persistent activity record.
+ * Maps to the ActivityLog Prisma model.
  */
-export interface CrudAuditLogRecord {
+export interface ActivityLogRecord {
   id: string;
-  action: string;
+  behavior: string;
   module: string;
-  entityId: string;
+  entityId: string | null;
   userId: string | null;
-  before: string | null;
-  after: string | null;
+  actorIdSnapshot: string | null;
+  before: unknown;
+  after: unknown;
   requestId: string | null;
+  endpointId: string | null;
   createdAt: Date;
-  updatedAt: Date;
 }

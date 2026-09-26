@@ -30,7 +30,7 @@ async function bootstrap(): Promise<void> {
     server.close(async () => {
       await closeQueues();
       await disconnectPrisma();
-      redis.disconnect();
+      redis?.disconnect();
       logger.info("Server shut down");
       process.exit(0);
     });

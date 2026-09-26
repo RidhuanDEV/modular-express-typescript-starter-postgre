@@ -9,6 +9,7 @@ import type {
   CreatePermissionDto,
   UpdatePermissionDto,
 } from "./permission.schema.js";
+import { createPermissionSchema, updatePermissionSchema } from "./permission.schema.js";
 
 const service = new PermissionService();
 
@@ -33,16 +34,16 @@ export class PermissionController {
   };
 
   create = async (
-    req: Request<Record<string, string>, unknown, CreatePermissionDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.create(req.body, user, reqIdStr);
+      const data: CreatePermissionDto = createPermissionSchema.parse(req.body);
+      const result = await service.create(data, user, reqIdStr);
       sendCreated(res, result);
     } catch (error) {
       next(error);
@@ -50,17 +51,17 @@ export class PermissionController {
   };
 
   update = async (
-    req: Request<{ id: string }, unknown, UpdatePermissionDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.update(id, req.body, user, reqIdStr);
+      const data: UpdatePermissionDto = updatePermissionSchema.parse(req.body);
+      const result = await service.update(id, data, user, reqIdStr);
       sendSuccess(res, { data: result });
     } catch (error) {
       next(error);
@@ -71,8 +72,7 @@ export class PermissionController {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
       await service.delete(id, user, reqIdStr);
       sendNoContent(res);

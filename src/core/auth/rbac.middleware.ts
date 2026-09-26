@@ -1,14 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
 import { HttpError } from "../errors/http-error.js";
-import { cacheService } from "../cache/cache.service.js";
 import { prisma } from "../../config/prisma.js";
 import type { PermissionName } from "../../constants/permissions.constants.js";
 
 async function resolvePermissions(userId: string): Promise<string[]> {
-  const cacheKey = `permissions:${userId}`;
-  const cached = await cacheService.get<string[]>(cacheKey);
-  if (cached) return cached;
-
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -28,7 +23,6 @@ async function resolvePermissions(userId: string): Promise<string[]> {
 
   const permissions =
     user?.role?.permissions?.map((rp) => rp.permission.name) ?? [];
-  await cacheService.set(cacheKey, permissions, 300);
   return permissions;
 }
 

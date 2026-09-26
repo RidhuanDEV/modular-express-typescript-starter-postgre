@@ -6,6 +6,8 @@ import { logger } from "../core/logger/logger.js";
 
 const pool = new Pool({
   connectionString: env.DATABASE_URL,
+  options: "-c timezone=UTC",
+  connectionTimeoutMillis: 3000,
 });
 
 const adapter = new PrismaPg(pool);

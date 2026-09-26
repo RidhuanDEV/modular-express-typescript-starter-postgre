@@ -2,6 +2,8 @@ import { PermissionRepository } from "./permission.repository.js";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../core/errors/http-error.js";
 import { cacheService } from "../../core/cache/cache.service.js";
+import { permissionCacheSchema } from "../../core/cache/cache-schemas.js";
+import { z } from "zod";
 import { auditService } from "../../core/audit/audit.service.js";
 import { AuditAction } from "../../constants/audit.constants.js";
 import { PERMISSION_MODULE } from "../../constants/modules.constants.js";
@@ -17,7 +19,7 @@ const CACHE_PREFIX = PERMISSION_MODULE;
 export class PermissionService {
   async findAll() {
     const cacheKey = `${CACHE_PREFIX}:list`;
-    const cached = await cacheService.get(cacheKey);
+    const cached = await cacheService.get(cacheKey, z.array(permissionCacheSchema));
     if (cached) return cached;
 
     const permissions = await repository.findAll();
@@ -27,7 +29,7 @@ export class PermissionService {
 
   async findById(id: string) {
     const cacheKey = `${CACHE_PREFIX}:${id}`;
-    const cached = await cacheService.get(cacheKey);
+    const cached = await cacheService.get(cacheKey, permissionCacheSchema);
     if (cached) return cached;
 
     const permission = await repository.findById(id);
@@ -72,9 +74,6 @@ export class PermissionService {
     user: JwtUserPayload,
     requestId?: string,
   ) {
-    const existingPermission = await repository.findById(id);
-    if (!existingPermission) throw HttpError.notFound("Permission not found");
-
     if (dto.name) {
       const existing = await repository.findByName(dto.name);
       if (existing && existing.id !== id) {
@@ -83,6 +82,8 @@ export class PermissionService {
     }
 
     const permission = await prisma.$transaction(async (tx) => {
+      const existingPermission = await repository.findById(id, tx);
+      if (!existingPermission) throw HttpError.notFound("Permission not found");
       const updated = await repository.update(id, dto, tx);
       if (!updated) throw HttpError.notFound("Permission not found");
 
@@ -108,10 +109,9 @@ export class PermissionService {
   }
 
   async delete(id: string, user: JwtUserPayload, requestId?: string) {
-    const existingPermission = await repository.findById(id);
-    if (!existingPermission) throw HttpError.notFound("Permission not found");
-
     await prisma.$transaction(async (tx) => {
+      const existingPermission = await repository.findById(id, tx);
+      if (!existingPermission) throw HttpError.notFound("Permission not found");
       const deleted = await repository.delete(id, tx);
       if (!deleted) throw HttpError.notFound("Permission not found");
 

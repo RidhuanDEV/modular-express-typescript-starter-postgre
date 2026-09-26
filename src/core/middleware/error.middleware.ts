@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { HttpError } from "../errors/http-error.js";
 import { logger } from "../logger/logger.js";
+import multer from "multer";
 
 export function errorMiddleware(
   err: Error,
@@ -9,6 +10,12 @@ export function errorMiddleware(
   _next: NextFunction,
 ): void {
   const requestId = req.requestId;
+
+  if (err instanceof multer.MulterError) {
+    const statusCode = err.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+    res.status(statusCode).json({ success: false, message: err.message, errors: [] });
+    return;
+  }
 
   if (err instanceof HttpError) {
     logger.warn({

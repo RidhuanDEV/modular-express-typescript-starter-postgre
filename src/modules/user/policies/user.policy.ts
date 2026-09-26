@@ -2,6 +2,7 @@ import type { JwtUserPayload } from "../../../types/index.js";
 import type { User } from "@prisma/client";
 import { HttpError } from "../../../core/errors/http-error.js";
 import { prisma } from "../../../config/prisma.js";
+import type { Prisma } from "@prisma/client";
 
 /**
  * Resource-level authorization policy for User.
@@ -25,14 +26,14 @@ export class UserPolicy {
     // Example: throw HttpError.forbidden('...') when user cannot update.
   }
 
-  async canDelete(user: JwtUserPayload, resource: User): Promise<void> {
+  async canDelete(user: JwtUserPayload, resource: User, trx?: Prisma.TransactionClient): Promise<void> {
     // 1. Avoid self-deletion (for both Admin and standard Users)
     if (user.id === resource.id) {
       throw HttpError.forbidden("You cannot delete your own account.");
     }
 
     // 2. Ensure only administrators are allowed to delete users
-    const requesterRole = await prisma.role.findUnique({
+    const requesterRole = await (trx ?? prisma).role.findUnique({
       where: { id: user.roleId },
     });
     if (!requesterRole || requesterRole.name !== "admin") {

@@ -6,3 +6,6 @@ coverage/
 .DS_Store
 Thumbs.db
 .docker/*
+uploads/
+create-ridhuanbackendtemplate/template/
+create-ridhuanbackendtemplate/*.tgz

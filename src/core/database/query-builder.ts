@@ -1,3 +1,5 @@
+import { parseInstant } from "../time/time.js";
+
 // ─── Public Interfaces ───────────────────────────────────────────────────────
 
 /**
@@ -203,7 +205,7 @@ function coerceFilterValue(value: unknown, type: FilterType): unknown {
     case "boolean":
       return value === "true" || value === true || value === "1" || value === 1;
     case "date":
-      return new Date(String(value));
+      return parseInstant(String(value));
     default:
       return value;
   }

@@ -1,0 +1,32 @@
+name: Publish initializer
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      - run: npm run verify:template
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+          JWT_SECRET: release_check_only_secret_at_least_32_chars
+      - name: Publish public package via npm trusted publishing
+        working-directory: create-ridhuanbackendtemplate
+        run: npm publish --access public

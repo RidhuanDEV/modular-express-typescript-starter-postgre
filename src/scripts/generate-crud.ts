@@ -1,3 +1,4 @@
+import { registerCrudModule } from "./register-crud.js";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -255,6 +256,12 @@ export const search${pascal}Schema = z.object({
 export const ${camelCase(name)}IdSchema = z.object({
   id: z.string().uuid(),
 });
+
+export const ${camelCase(name)}ResponseSchema = z.object({
+  id: z.string(),
+  createdAt: z.iso.datetime({ offset: true }),
+  updatedAt: z.iso.datetime({ offset: true }),
+}).passthrough();
 `;
 }
 
@@ -501,6 +508,9 @@ import { ${camel}QueryConfig } from './queries/${name}.query.js';
 import type { Create${pascal}Dto } from './dto/create-${name}.dto.js';
 import type { Update${pascal}Dto } from './dto/update-${name}.dto.js';
 import type { Search${pascal}Dto } from './dto/search-${name}.dto.js';
+import { ${camel}ResponseSchema } from './${name}.schema.js';
+import { paginationCacheSchema } from '../../core/cache/cache-schemas.js';
+import { z } from 'zod';
 import type { JwtUserPayload, PaginationMeta } from '../../types/index.js';
 import type { ${pascal}ResponseDto, ${pascal}ResponseProjection } from './dto/${name}-response.dto.js';
 
@@ -510,7 +520,7 @@ const CACHE_PREFIX = ${moduleConst};
 export class ${pascal}Service {
   async findAll(query: Search${pascal}Dto): Promise<{ data: ${pascal}ResponseProjection[]; meta: PaginationMeta }> {
     const cacheKey = \`\${CACHE_PREFIX}:list:\${JSON.stringify(query)}\`;
-    const cached = await cacheService.get<{ data: ${pascal}ResponseProjection[]; meta: PaginationMeta }>(cacheKey);
+    const cached = await cacheService.get(cacheKey, z.object({ data: z.array(${camel}ResponseSchema), meta: paginationCacheSchema }));
     if (cached) return cached;
 
     const findOptions = buildFindOptions(query, ${camel}QueryConfig);
@@ -528,7 +538,7 @@ export class ${pascal}Service {
 
   async findById(id: string): Promise<${pascal}ResponseDto> {
     const cacheKey = \`\${CACHE_PREFIX}:\${id}\`;
-    const cached = await cacheService.get<${pascal}ResponseDto>(cacheKey);
+    const cached = await cacheService.get(cacheKey, ${camel}ResponseSchema);
     if (cached) return cached;
 
     const record = await repository.findById(id);
@@ -622,6 +632,7 @@ import { sendSuccess, sendCreated, sendNoContent } from '../../utils/response.js
 import type { Create${pascal}Dto } from './dto/create-${name}.dto.js';
 import type { Update${pascal}Dto } from './dto/update-${name}.dto.js';
 import type { Search${pascal}Dto } from './dto/search-${name}.dto.js';
+import { create${pascal}Schema, update${pascal}Schema } from './${name}.schema.js';
 
 const service = new ${pascal}Service();
 
@@ -665,16 +676,16 @@ export class ${pascal}Controller {
   };
 
   create = async (
-    req: Request<Record<string, string>, unknown, Create${pascal}Dto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers['x-request-id'];
-      const reqIdStr = typeof requestId === 'string' ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const data = await service.create(req.body, user, reqIdStr);
+      const body: Create${pascal}Dto = create${pascal}Schema.parse(req.body);
+      const data = await service.create(body, user, reqIdStr);
       sendCreated(res, data);
     } catch (err) {
       next(err);
@@ -682,16 +693,16 @@ export class ${pascal}Controller {
   };
 
   update = async (
-    req: Request<{ id: string }, unknown, Update${pascal}Dto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers['x-request-id'];
-      const reqIdStr = typeof requestId === 'string' ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const data = await service.update(requireRouteParam(req, 'id'), req.body, user, reqIdStr);
+      const body: Update${pascal}Dto = update${pascal}Schema.parse(req.body);
+      const data = await service.update(requireRouteParam(req, 'id'), body, user, reqIdStr);
       sendSuccess(res, { data });
     } catch (err) {
       next(err);
@@ -701,8 +712,7 @@ export class ${pascal}Controller {
   delete = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers['x-request-id'];
-      const reqIdStr = typeof requestId === 'string' ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
       await service.delete(requireRouteParam(req, 'id'), user, reqIdStr);
       sendNoContent(res);
@@ -716,172 +726,21 @@ export class ${pascal}Controller {
 
 function genRoutes(name: string): string {
   const pascal = pascalCase(name);
-  const plural = pluralize(name);
-  const permissionConst = permissionConstantName(name);
-  return `import { Router } from 'express';
+  return `import type { Express } from 'express';
 import { ${pascal}Controller } from './${name}.controller.js';
-import { authenticate } from '../../core/auth/auth.middleware.js';
-import { requirePermission } from '../../core/auth/rbac.middleware.js';
-import { validate } from '../../core/middleware/validate.middleware.js';
-import { ${permissionConst} } from '../../constants/permissions.constants.js';
-import { create${pascal}Schema, update${pascal}Schema, ${camelCase(name)}IdSchema, search${pascal}Schema } from './${name}.schema.js';
-
-const router = Router();
-const controller = new ${pascal}Controller();
-
-/**
- * @openapi
- * /${plural}:
- *   get:
- *     tags: [${pascal}]
- *     summary: List all ${plural}
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: page
- *         schema: { type: integer, default: 1 }
- *       - in: query
- *         name: limit
- *         schema: { type: integer, default: 10 }
- *       - in: query
- *         name: sortBy
- *         schema: { type: string }
- *       - in: query
- *         name: orderBy
- *         schema: { type: string, enum: [asc, desc] }
- *       - in: query
- *         name: search
- *         schema: { type: string }
- *       - in: query
- *         name: fields
- *         schema: { type: string }
- *     responses:
- *       200:
- *         description: Paginated list
- */
-router.get('/', authenticate, requirePermission(${permissionConst}.VIEW), validate({ query: search${pascal}Schema }), controller.getAll);
-
-/**
- * @openapi
- * /${plural}/{id}:
- *   get:
- *     tags: [${pascal}]
- *     summary: Get ${name} by ID
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string, format: uuid }
- *     responses:
- *       200:
- *         description: Single record
- *       404:
- *         description: Not found
- */
-router.get(
-  '/:id',
-  authenticate,
-  requirePermission(${permissionConst}.VIEW),
-  validate({ params: ${camelCase(name)}IdSchema }),
-  controller.getById,
-);
-
-/**
- * @openapi
- * /${plural}:
- *   post:
- *     tags: [${pascal}]
- *     summary: Create ${name}
- *     security:
- *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       201:
- *         description: Created
- */
-router.post(
-  '/',
-  authenticate,
-  requirePermission(${permissionConst}.CREATE),
-  validate({ body: create${pascal}Schema }),
-  controller.create,
-);
-
-/**
- * @openapi
- * /${plural}/{id}:
- *   put:
- *     tags: [${pascal}]
- *     summary: Update ${name}
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string, format: uuid }
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Updated
- *       404:
- *         description: Not found
- */
-router.put(
-  '/:id',
-  authenticate,
-  requirePermission(${permissionConst}.UPDATE),
-  validate({ params: ${camelCase(name)}IdSchema, body: update${pascal}Schema }),
-  controller.update,
-);
-
-/**
- * @openapi
- * /${plural}/{id}:
- *   delete:
- *     tags: [${pascal}]
- *     summary: Delete ${name}
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema: { type: string, format: uuid }
- *     responses:
- *       204:
- *         description: Deleted
- *       404:
- *         description: Not found
- */
-router.delete(
-  '/:id',
-  authenticate,
-  requirePermission(${permissionConst}.DELETE),
-  validate({ params: ${camelCase(name)}IdSchema }),
-  controller.delete,
-);
-
-export const path = '/${plural}';
-export default router;
+import { mountEndpoint } from '../../core/http/mount-endpoint.js';
+export function register${pascal}Routes(app: Express): void {
+  const controller = new ${pascal}Controller();
+  mountEndpoint(app, '${name}.list', controller.getAll);
+  mountEndpoint(app, '${name}.get', controller.getById);
+  mountEndpoint(app, '${name}.create', controller.create);
+  mountEndpoint(app, '${name}.update', controller.update);
+  mountEndpoint(app, '${name}.delete', controller.delete);
+}
 `;
 }
 
-// ─── Postman Collection ─────────────────────────────────────────────────────
-
+// Postman collection
 interface PostmanItem {
   name: string;
   request: {
@@ -982,7 +841,7 @@ function updatePostman(name: string): void {
       {
         name: `Update ${pascal}`,
         request: {
-          method: "PUT",
+          method: "PATCH",
           header: [authHeader, jsonHeader],
           url: {
             raw: `{{baseUrl}}/${plural}/:id`,
@@ -1074,6 +933,7 @@ function main(): void {
   writeFile(path.join(moduleDir, `${name}.service.ts`), genService(name));
   writeFile(path.join(moduleDir, `${name}.controller.ts`), genController(name));
   writeFile(path.join(moduleDir, `${name}.routes.ts`), genRoutes(name));
+  registerCrudModule(name, pluralize(name), pascalCase(name), camelCase(name), permissionConstantName(name));
 
   // Postman
   updatePostman(name);
@@ -1082,7 +942,7 @@ function main(): void {
   console.log(`\nImportant next steps:`);
   console.log(`1. Add model "${pascalCase(name)}" to your schema.prisma file manually.`);
   console.log(`2. Run "npx prisma migrate dev --name create-${name}" to update the database schema.`);
-  console.log(`3. Route loading is automatic; restart the dev server to expose the API endpoints.\n`);
+  console.log(`3. Registry and app registration were updated; review policies and response schemas.\n`);
 }
 
 try {

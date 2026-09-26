@@ -8,6 +8,7 @@ import { sendSuccess, sendCreated, sendNoContent } from "../../utils/response.js
 import type { SearchUserDto } from "./dto/search-user.dto.js";
 import type { CreateUserDto } from "./dto/create-user.dto.js";
 import type { UpdateUserDto } from "./dto/update-user.dto.js";
+import { createUserSchema, updateUserSchema } from "./user.schema.js";
 
 const service = new UserService();
 
@@ -51,16 +52,16 @@ export class UserController {
   };
 
   create = async (
-    req: Request<Record<string, string>, unknown, CreateUserDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.create(req.body, user, reqIdStr);
+      const data: CreateUserDto = createUserSchema.parse(req.body);
+      const result = await service.create(data, user, reqIdStr);
       sendCreated(res, result);
     } catch (error) {
       next(error);
@@ -68,17 +69,17 @@ export class UserController {
   };
 
   update = async (
-    req: Request<{ id: string }, unknown, UpdateUserDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.update(id, req.body, user, reqIdStr);
+      const data: UpdateUserDto = updateUserSchema.parse(req.body);
+      const result = await service.update(id, data, user, reqIdStr);
       sendSuccess(res, { data: result });
     } catch (error) {
       next(error);
@@ -89,8 +90,7 @@ export class UserController {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
       await service.delete(id, user, reqIdStr);
       sendNoContent(res);

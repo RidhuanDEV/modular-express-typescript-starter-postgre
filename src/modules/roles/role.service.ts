@@ -2,6 +2,8 @@ import { RoleRepository } from "./role.repository.js";
 import { prisma } from "../../config/prisma.js";
 import { HttpError } from "../../core/errors/http-error.js";
 import { cacheService } from "../../core/cache/cache.service.js";
+import { roleCacheSchema } from "../../core/cache/cache-schemas.js";
+import { z } from "zod";
 import { auditService } from "../../core/audit/audit.service.js";
 import { AuditAction } from "../../constants/audit.constants.js";
 import { ROLE_MODULE } from "../../constants/modules.constants.js";
@@ -18,7 +20,7 @@ const CACHE_PREFIX = ROLE_MODULE;
 export class RoleService {
   async findAll() {
     const cacheKey = `${CACHE_PREFIX}:list`;
-    const cached = await cacheService.get(cacheKey);
+    const cached = await cacheService.get(cacheKey, z.array(roleCacheSchema));
     if (cached) return cached;
 
     const roles = await repository.findAll();
@@ -28,7 +30,7 @@ export class RoleService {
 
   async findById(id: string) {
     const cacheKey = `${CACHE_PREFIX}:${id}`;
-    const cached = await cacheService.get(cacheKey);
+    const cached = await cacheService.get(cacheKey, roleCacheSchema);
     if (cached) return cached;
 
     const role = await repository.findById(id);
@@ -66,9 +68,6 @@ export class RoleService {
     user: JwtUserPayload,
     requestId?: string,
   ) {
-    const existingRole = await repository.findById(id);
-    if (!existingRole) throw HttpError.notFound("Role not found");
-
     if (dto.name) {
       const existing = await repository.findByName(dto.name);
       if (existing && existing.id !== id) {
@@ -77,6 +76,8 @@ export class RoleService {
     }
 
     const role = await prisma.$transaction(async (tx) => {
+      const existingRole = await repository.findById(id, tx);
+      if (!existingRole) throw HttpError.notFound("Role not found");
       const updated = await repository.update(id, dto, tx);
       if (!updated) throw HttpError.notFound("Role not found");
 
@@ -100,10 +101,9 @@ export class RoleService {
   }
 
   async delete(id: string, user: JwtUserPayload, requestId?: string) {
-    const existingRole = await repository.findById(id);
-    if (!existingRole) throw HttpError.notFound("Role not found");
-
     await prisma.$transaction(async (tx) => {
+      const existingRole = await repository.findById(id, tx);
+      if (!existingRole) throw HttpError.notFound("Role not found");
       const deleted = await repository.delete(id, tx);
       if (!deleted) throw HttpError.notFound("Role not found");
 
@@ -130,10 +130,9 @@ export class RoleService {
     user: JwtUserPayload,
     requestId?: string,
   ) {
-    const existingRole = await repository.findById(id);
-    if (!existingRole) throw HttpError.notFound("Role not found");
-
     const updatedRole = await prisma.$transaction(async (tx) => {
+      const existingRole = await repository.findById(id, tx);
+      if (!existingRole) throw HttpError.notFound("Role not found");
       await repository.setPermissions(id, dto.permissionIds, tx);
       const updated = await repository.findById(id, tx);
       if (!updated) throw HttpError.notFound("Role not found");

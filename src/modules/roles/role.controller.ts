@@ -10,6 +10,7 @@ import type {
   UpdateRoleDto,
   AssignPermissionsDto,
 } from "./role.schema.js";
+import { createRoleSchema, updateRoleSchema, assignPermissionsSchema } from "./role.schema.js";
 
 const service = new RoleService();
 
@@ -34,16 +35,16 @@ export class RoleController {
   };
 
   create = async (
-    req: Request<Record<string, string>, unknown, CreateRoleDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.create(req.body, user, reqIdStr);
+      const data: CreateRoleDto = createRoleSchema.parse(req.body);
+      const result = await service.create(data, user, reqIdStr);
       sendCreated(res, result);
     } catch (error) {
       next(error);
@@ -51,17 +52,17 @@ export class RoleController {
   };
 
   update = async (
-    req: Request<{ id: string }, unknown, UpdateRoleDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.update(id, req.body, user, reqIdStr);
+      const data: UpdateRoleDto = updateRoleSchema.parse(req.body);
+      const result = await service.update(id, data, user, reqIdStr);
       sendSuccess(res, { data: result });
     } catch (error) {
       next(error);
@@ -72,8 +73,7 @@ export class RoleController {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
       await service.delete(id, user, reqIdStr);
       sendNoContent(res);
@@ -83,17 +83,17 @@ export class RoleController {
   };
 
   assignPermissions = async (
-    req: Request<{ id: string }, unknown, AssignPermissionsDto>,
+    req: Request,
     res: Response,
     next: NextFunction,
   ): Promise<void> => {
     try {
       const id = requireRouteParam(req, "id");
       const user = requireAuthenticatedUser(req);
-      const requestId = req.headers["x-request-id"];
-      const reqIdStr = typeof requestId === "string" ? requestId : undefined;
+      const reqIdStr = req.requestId;
 
-      const result = await service.assignPermissions(id, req.body, user, reqIdStr);
+      const data: AssignPermissionsDto = assignPermissionsSchema.parse(req.body);
+      const result = await service.assignPermissions(id, data, user, reqIdStr);
       sendSuccess(res, { data: result });
     } catch (error) {
       next(error);

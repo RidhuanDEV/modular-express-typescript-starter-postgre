@@ -3,6 +3,7 @@ import { prisma } from "../../config/prisma.js";
 import type { CreateUserDto } from "./dto/create-user.dto.js";
 import type { UpdateUserDto } from "./dto/update-user.dto.js";
 import type { PrismaFindOptions } from "../../core/database/query-builder.js";
+import { nowUtc } from "../../core/time/time.js";
 
 type TransactionClient = Prisma.TransactionClient;
 
@@ -42,8 +43,9 @@ export class UserRepository {
     return { rows, count };
   }
 
-  async findById(id: string): Promise<UserWithRole | null> {
-    return prisma.user.findUnique({
+  async findById(id: string, trx?: TransactionClient): Promise<UserWithRole | null> {
+    const client = trx ?? prisma;
+    return client.user.findUnique({
       where: { id },
       include: {
         role: {
@@ -92,7 +94,7 @@ export class UserRepository {
     const client = trx ?? prisma;
     await client.user.update({
       where: { id },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: nowUtc() },
     });
   }
 }

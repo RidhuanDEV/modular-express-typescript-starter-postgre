@@ -1,0 +1,52 @@
+name: CI
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CI: "true"
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      PG_TEST_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      JWT_SECRET: ci_only_secret_at_least_32_characters_long
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=high
+      - run: npm audit --omit=dev --audit-level=moderate
+      - run: npx prisma generate
+      - run: npm run verify:template
+      - run: node scripts/test-migrations.mjs
+      - run: docker build -t ridhuanbackendtemplate:ci .
+      - name: Smoke test packed initializer
+        shell: bash
+        run: |
+          npm pack --pack-destination "$RUNNER_TEMP" ./create-ridhuanbackendtemplate
+          PACKAGE=$(find "$RUNNER_TEMP" -maxdepth 1 -name 'create-ridhuanbackendtemplate-*.tgz' -print -quit)
+          npm exec --yes --package "$PACKAGE" -- create-ridhuanbackendtemplate "$RUNNER_TEMP/new-api" --yes --no-install
+          cd "$RUNNER_TEMP/new-api"
+          npm ci
+          npx prisma generate
+          npm run build
+          DATABASE_URL='postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable' npx prisma migrate deploy
+          DATABASE_URL='postgresql://postgres:postgres@localhost:5432/postgres?sslmode=disable' npm run seed

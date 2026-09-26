@@ -1,0 +1,19 @@
+{
+  "name": "create-ridhuanbackendtemplate",
+  "version": "0.1.0",
+  "description": "Create a modular Express TypeScript PostgreSQL backend",
+  "type": "module",
+  "bin": {
+    "create-ridhuanbackendtemplate": "bin/create.mjs"
+  },
+  "files": ["bin", "template"],
+  "engines": { "node": ">=24" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RidhuanDEV/modular-express-typescript-starter-postgre.git"
+  },
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "prepack": "node ../scripts/prepare-create-package.mjs"
+  }
+}

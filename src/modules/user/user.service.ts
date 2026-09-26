@@ -1,6 +1,7 @@
 import { UserRepository } from "./user.repository.js";
 import { prisma } from "../../config/prisma.js";
 import { cacheService } from "../../core/cache/cache.service.js";
+import { userCacheSchema, userListCacheSchema } from "../../core/cache/cache-schemas.js";
 import { auditService } from "../../core/audit/audit.service.js";
 import { HttpError } from "../../core/errors/http-error.js";
 import { buildFindOptions } from "../../core/database/query-builder.js";
@@ -10,6 +11,7 @@ import { userPolicy } from "./policies/user.policy.js";
 import { userQueryConfig } from "./queries/user.query.js";
 import { AuditAction } from "../../constants/audit.constants.js";
 import { USER_MODULE } from "../../constants/modules.constants.js";
+import bcrypt from "bcrypt";
 import type { CreateUserDto } from "./dto/create-user.dto.js";
 import type { UpdateUserDto } from "./dto/update-user.dto.js";
 import type { SearchUserDto } from "./dto/search-user.dto.js";
@@ -30,7 +32,7 @@ export class UserService {
     query: SearchUserDto,
   ): Promise<{ data: UserResponseProjection[]; meta: PaginationMeta }> {
     const cacheKey = `${CACHE_PREFIX}:list:${JSON.stringify(query)}`;
-    const cached = await cacheService.get<{ data: UserResponseProjection[]; meta: PaginationMeta }>(cacheKey);
+    const cached = await cacheService.get(cacheKey, userListCacheSchema);
     if (cached) return cached;
 
     const findOptions = buildFindOptions(query, userQueryConfig);
@@ -48,7 +50,7 @@ export class UserService {
 
   async findById(id: string): Promise<UserResponseDto> {
     const cacheKey = `${CACHE_PREFIX}:${id}`;
-    const cached = await cacheService.get<UserResponseDto>(cacheKey);
+    const cached = await cacheService.get(cacheKey, userCacheSchema);
     if (cached) return cached;
 
     const record = await repository.findById(id);
@@ -67,7 +69,7 @@ export class UserService {
     userPolicy.canCreate(user);
 
     const created = await prisma.$transaction(async (tx) => {
-      const record = await repository.create(data, tx);
+      const record = await repository.create({ ...data, password: await bcrypt.hash(data.password, 12) }, tx);
       await auditService.persist({
         action: AuditAction.CREATE,
         module: USER_MODULE,
@@ -93,11 +95,10 @@ export class UserService {
     user: JwtUserPayload,
     requestId?: string,
   ): Promise<UserResponseDto> {
-    const existing = await repository.findById(id);
-    if (!existing) throw HttpError.notFound("User not found");
-    userPolicy.canUpdate(user, existing);
-
     const updated = await prisma.$transaction(async (tx) => {
+      const existing = await repository.findById(id, tx);
+      if (!existing) throw HttpError.notFound("User not found");
+      userPolicy.canUpdate(user, existing);
       const record = await repository.update(id, data, tx);
       if (!record) throw HttpError.notFound("User not found");
       await auditService.persist({
@@ -122,11 +123,10 @@ export class UserService {
   }
 
   async delete(id: string, user: JwtUserPayload, requestId?: string): Promise<void> {
-    const existing = await repository.findById(id);
-    if (!existing) throw HttpError.notFound("User not found");
-    await userPolicy.canDelete(user, existing);
-
     await prisma.$transaction(async (tx) => {
+      const existing = await repository.findById(id, tx);
+      if (!existing) throw HttpError.notFound("User not found");
+      await userPolicy.canDelete(user, existing, tx);
       await repository.delete(id, tx);
       await auditService.persist({
         action: AuditAction.DELETE,

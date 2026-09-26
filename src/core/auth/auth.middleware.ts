@@ -2,7 +2,6 @@ import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "./jwt.service.js";
 import { HttpError } from "../errors/http-error.js";
 import { prisma } from "../../config/prisma.js";
-import { cacheService } from "../cache/cache.service.js";
 
 export async function authenticate(
   req: Request,
@@ -21,19 +20,11 @@ export async function authenticate(
   try {
     const payload = verifyToken(token);
 
-    // Solve "Ghost User" vulnerability by checking active session status via Redis Cache first.
-    const cacheKey = `user:active:${payload.id}`;
-    let isUserActive = await cacheService.get<boolean>(cacheKey);
-
-    if (isUserActive === null) {
-      const user = await prisma.user.findUnique({
-        where: { id: payload.id },
-        select: { id: true, deletedAt: true },
-      });
-      isUserActive = user !== null && user.deletedAt === null;
-      // Cache the active status for 60 seconds to avoid hitting database repeatedly
-      await cacheService.set(cacheKey, isUserActive, 60);
-    }
+    const user = await prisma.user.findUnique({
+      where: { id: payload.id },
+      select: { id: true, deletedAt: true },
+    });
+    const isUserActive = user !== null && user.deletedAt === null;
 
     if (!isUserActive) {
       next(HttpError.unauthorized("User account is inactive or deleted"));

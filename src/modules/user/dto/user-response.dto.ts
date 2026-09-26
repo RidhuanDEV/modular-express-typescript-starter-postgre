@@ -4,14 +4,14 @@ export interface RoleWithPermissionsDto {
   permissions?: Array<{
     id: string;
     name: string;
-  }>;
+  }> | undefined;
 }
 
 export interface UserResponseDto {
   id: string;
   email: string;
   roleId: string;
-  role?: RoleWithPermissionsDto;
+  role?: RoleWithPermissionsDto | undefined;
   /** ISO 8601 string — matches the actual JSON serialisation over HTTP. */
   createdAt: string;
   updatedAt: string;

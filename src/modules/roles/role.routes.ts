@@ -1,64 +1,12 @@
-import { Router } from "express";
+import type { Express } from "express";
 import { RoleController } from "./role.controller.js";
-import { authenticate } from "../../core/auth/auth.middleware.js";
-import { requirePermission } from "../../core/auth/rbac.middleware.js";
-import { validate } from "../../core/middleware/validate.middleware.js";
-import {
-  createRoleSchema,
-  updateRoleSchema,
-  roleIdSchema,
-  assignPermissionsSchema,
-} from "./role.schema.js";
-
-const router = Router();
-const controller = new RoleController();
-
-router.get(
-  "/",
-  authenticate,
-  requirePermission("manage_roles"),
-  controller.getAll,
-);
-
-router.get(
-  "/:id",
-  authenticate,
-  requirePermission("manage_roles"),
-  validate({ params: roleIdSchema }),
-  controller.getById,
-);
-
-router.post(
-  "/",
-  authenticate,
-  requirePermission("manage_roles"),
-  validate({ body: createRoleSchema }),
-  controller.create,
-);
-
-router.patch(
-  "/:id",
-  authenticate,
-  requirePermission("manage_roles"),
-  validate({ params: roleIdSchema, body: updateRoleSchema }),
-  controller.update,
-);
-
-router.delete(
-  "/:id",
-  authenticate,
-  requirePermission("manage_roles"),
-  validate({ params: roleIdSchema }),
-  controller.delete,
-);
-
-router.post(
-  "/:id/permissions",
-  authenticate,
-  requirePermission("manage_roles"),
-  validate({ params: roleIdSchema, body: assignPermissionsSchema }),
-  controller.assignPermissions,
-);
-
-export const path = "/roles";
-export default router;
+import { mountEndpoint } from "../../core/http/mount-endpoint.js";
+export function registerRoleRoutes(app: Express): void {
+  const controller = new RoleController();
+  mountEndpoint(app, "role.list", controller.getAll);
+  mountEndpoint(app, "role.get", controller.getById);
+  mountEndpoint(app, "role.create", controller.create);
+  mountEndpoint(app, "role.update", controller.update);
+  mountEndpoint(app, "role.delete", controller.delete);
+  mountEndpoint(app, "role.assignPermissions", controller.assignPermissions);
+}
