@@ -15,9 +15,8 @@ const databases = [];
 const root = resolve(import.meta.dirname, "..");
 
 function prisma(args, databaseUrl) {
-  const result = spawnSync("npx", ["prisma", ...args], {
+  const result = spawnSync(process.execPath, [resolve(root, "node_modules", "prisma", "build", "index.js"), ...args], {
     cwd: root, env: { ...process.env, DATABASE_URL: databaseUrl }, encoding: "utf8",
-    shell: process.platform === "win32",
   });
   if (result.status !== 0) throw new Error(`prisma ${args.join(" ")} failed:\n${result.stdout}\n${result.stderr}`);
 }
@@ -38,8 +37,9 @@ try {
     await client.connect();
     try {
       const result = await client.query("SELECT count(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL");
-      if (result.rows[0].count !== 2) throw new Error("Fresh database did not apply both migrations");
+      if (result.rows[0].count !== 4) throw new Error("Fresh database did not apply all migrations");
       await client.query('SELECT id FROM "StoredFile" LIMIT 0');
+      await client.query('SELECT id FROM "Notification" LIMIT 0');
     } finally { await client.end(); }
   });
   await withDatabase("upgrade", async (url) => {
@@ -63,6 +63,7 @@ try {
         throw new Error("Upgrade migration did not preserve timestamps and redact audit data");
       }
       await verify.query('SELECT id FROM "StoredFile" LIMIT 0');
+      await verify.query('SELECT id FROM "Notification" LIMIT 0');
     } finally { await verify.end(); }
   });
   console.log("Fresh and upgrade migrations verified");

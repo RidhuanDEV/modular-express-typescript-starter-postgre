@@ -1,8 +1,9 @@
 import { cp, mkdir, rm } from "node:fs/promises";
-import { resolve, join } from "node:path";
+import { resolve, join, sep } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
-const target = join(root, "create-ridhuanbackendtemplate", "template");
+const target = resolve(root, "create-ridhuanbackendtemplate", "template");
+if (!target.startsWith(`${root}${sep}`)) throw new Error("Template target is outside repository");
 const files = [
   ".dockerignore", ".env.example", ".gitignore", "Dockerfile", "docker-compose.yml",
   "docker-compose.override.yml", "package.json", "package-lock.json", "prisma.config.ts",

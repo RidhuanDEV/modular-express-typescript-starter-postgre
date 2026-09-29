@@ -37,6 +37,8 @@ jobs:
       - run: npx prisma generate
       - run: npm run verify:template
       - run: node scripts/test-migrations.mjs
+      - run: npx prisma migrate deploy
+      - run: npm run test:database
       - run: docker build -t ridhuanbackendtemplate:ci .
       - name: Smoke test packed initializer
         shell: bash
