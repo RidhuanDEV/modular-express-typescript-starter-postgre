@@ -7,7 +7,7 @@ if (!target.startsWith(`${root}${sep}`)) throw new Error("Template target is out
 const files = [
   ".dockerignore", ".env.example", ".gitignore", "Dockerfile", "docker-compose.yml",
   "docker-compose.override.yml", "package.json", "package-lock.json", "prisma.config.ts",
-  "tsconfig.json", "README.md", "DEVELOPER-GUIDE.md", "src", "prisma", "tests",
+  "tsconfig.json", "eslint.config.js", "README.md", "DEVELOPER-GUIDE.md", "src", "prisma", "tests",
 ];
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });

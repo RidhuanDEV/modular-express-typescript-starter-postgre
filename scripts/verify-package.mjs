@@ -19,6 +19,8 @@ console.log(`Package contents verified: ${paths.length} files`);
 
 const scratch = await mkdtemp(join(tmpdir(), "ridhuan-template-"));
 const project = join(scratch, "new-api");
+// Validate the cleanup target before any work, so the finally block never has to throw.
+if (!resolve(scratch).startsWith(resolve(tmpdir()) + sep)) throw new Error("Unsafe temporary directory");
 try {
   const cli = resolve(cwd, "bin/create.mjs");
   const created = spawnSync(process.execPath, [cli, project, "--yes", "--no-install"], { encoding: "utf8" });
@@ -35,6 +37,5 @@ try {
   }
   console.log("Initializer scaffold and overwrite protection verified");
 } finally {
-  if (!resolve(scratch).startsWith(resolve(tmpdir()) + sep)) throw new Error("Unsafe temporary directory");
   await rm(scratch, { recursive: true, force: true });
 }
