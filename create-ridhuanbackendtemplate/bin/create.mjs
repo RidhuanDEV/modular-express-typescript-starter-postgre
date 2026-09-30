@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes } from "node:crypto";
-import { readdir, readFile, cp, mkdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, cp, mkdir, writeFile, unlink } from "node:fs/promises";
 import { dirname, join, resolve, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -55,7 +55,7 @@ async function main() {
     const appPort = port(await ask("Application port", "3000"));
     const dbName = slug(await ask("Database name", name.replace(/-/g, "_")));
     const dbUser = slug(await ask("Database user", name.replace(/-/g, "_")));
-    const dbPassword = await ask("Database password (blank uses generated value)", randomBytes(24).toString("hex"));
+    const dbPassword = process.env.RIDHUAN_DB_PASSWORD || randomBytes(24).toString("hex");
     if (!/^[A-Za-z0-9._~-]+$/.test(dbPassword)) fail("Database password must use letters, numbers, dots, underscores, tildes or hyphens");
     const redisChoice = (await ask("Enable Redis cache and distributed rate limit? (y/n)", "n")).toLowerCase();
     if (!["y", "n"].includes(redisChoice)) fail("Redis choice must be y or n");
@@ -68,7 +68,7 @@ async function main() {
       region: await ask("S3 region", "us-east-1"),
       bucket: await ask("S3 bucket", "uploads"),
       accessKey: await ask("S3 access key", "minioadmin"),
-      secretKey: await ask("S3 secret key", randomBytes(24).toString("hex")),
+      secretKey: process.env.RIDHUAN_S3_SECRET_KEY || randomBytes(24).toString("hex"),
     } : null;
     if (s3) {
       for (const endpoint of [s3.endpoint, s3.dockerEndpoint]) new URL(endpoint);
@@ -80,9 +80,14 @@ async function main() {
     const replacements = {
       PORT: String(appPort), APP_PORT: String(appPort),
       DATABASE_URL: `postgresql://${encodeURIComponent(dbUser)}:${encodeURIComponent(dbPassword)}@localhost:5432/${encodeURIComponent(dbName)}?sslmode=disable`,
+      DATABASE_URL_DOCKER: `postgresql://${encodeURIComponent(dbUser)}:${encodeURIComponent(dbPassword)}@postgres:5432/${encodeURIComponent(dbName)}?sslmode=disable`,
+      COMPOSE_PROFILES: [redisEnabled ? "redis" : "", s3?.dockerEndpoint === "http://minio:9000" ? "minio" : ""].filter(Boolean).join(","),
+      COMPOSE_PROJECT_NAME: `${name.replaceAll(".", "-").replaceAll("_", "-")}-${randomBytes(4).toString("hex")}`,
+      S3_ACCESS_KEY_ID: "development", S3_SECRET_ACCESS_KEY: randomBytes(24).toString("hex"),
       POSTGRES_USER: dbUser, POSTGRES_PASSWORD: dbPassword, POSTGRES_DB: dbName,
       JWT_SECRET: randomBytes(48).toString("hex"),
       ADMIN_PASSWORD: randomBytes(24).toString("hex"), USER_PASSWORD: randomBytes(24).toString("hex"),
+      REDIS_NAMESPACE: `${name.replaceAll(".", "-").replaceAll("_", "-")}-${randomBytes(4).toString("hex")}`,
       CACHE_ENABLED: String(redisEnabled), RATE_LIMIT_STORE: redisEnabled ? "redis" : "memory",
       UPLOAD_STORAGE: storage,
       ...(s3 ? { S3_ENDPOINT: s3.endpoint, S3_ENDPOINT_DOCKER: s3.dockerEndpoint,
@@ -92,6 +97,8 @@ async function main() {
     const envFile = setEnv(envTemplate, replacements);
     await mkdir(target, { recursive: true });
     for (const entry of await readdir(templateRoot)) await cp(join(templateRoot, entry), join(target, entry), { recursive: true });
+    await writeFile(join(target, ".gitignore"), await readFile(join(target, "gitignore.template")));
+    await unlink(join(target, "gitignore.template"));
     const packageJson = JSON.parse(await readFile(join(target, "package.json"), "utf8"));
     packageJson.name = name;
     packageJson.version = "0.1.0";
@@ -104,7 +111,7 @@ async function main() {
     lock.packages[""].name = name;
     lock.packages[""].version = "0.1.0";
     await writeFile(join(target, "package-lock.json"), JSON.stringify(lock, null, 2) + "\n");
-    await writeFile(join(target, ".env"), envFile);
+    await writeFile(join(target, ".env"), envFile, { flag: "wx", mode: 0o600 });
     console.log(`Created ${target}`);
     if (!noInstall) {
       const result = spawnSync("npm", ["install"], { cwd: target, stdio: "inherit", shell: process.platform === "win32" });
