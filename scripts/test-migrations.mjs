@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import { readFile, readdir } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import { resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -13,6 +14,18 @@ const admin = new pg.Client({ connectionString: adminUrl.toString() });
 await admin.connect();
 const databases = [];
 const root = resolve(import.meta.dirname, "..");
+const migrationDirectories = await readdir(resolve(root, "prisma/migrations"), { withFileTypes: true });
+const expectedMigrations = migrationDirectories.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+assert(expectedMigrations.length > 0, "Migration source inventory must not be empty");
+
+async function verifyMigrationInventory(client) {
+  const result = await client.query("SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name");
+  assert.deepEqual(result.rows.map((row) => row.migration_name), expectedMigrations, "Applied migration identities must match the complete source inventory");
+  await client.query('SELECT id FROM "RefreshFamily" LIMIT 0');
+  await client.query('SELECT "recipientId", sequence FROM "NotificationCounter" LIMIT 0');
+  await client.query('SELECT id FROM "EmailJob" LIMIT 0');
+  await client.query('SELECT sequence FROM "Notification" LIMIT 0');
+}
 
 function prisma(args, databaseUrl) {
   const result = spawnSync(process.execPath, [resolve(root, "node_modules", "prisma", "build", "index.js"), ...args], {
@@ -36,8 +49,7 @@ try {
     const client = new pg.Client({ connectionString: url });
     await client.connect();
     try {
-      const result = await client.query("SELECT count(*)::int AS count FROM _prisma_migrations WHERE finished_at IS NOT NULL");
-      if (result.rows[0].count !== 4) throw new Error("Fresh database did not apply all migrations");
+      await verifyMigrationInventory(client);
       await client.query('SELECT id FROM "StoredFile" LIMIT 0');
       await client.query('SELECT id FROM "Notification" LIMIT 0');
     } finally { await client.end(); }
@@ -57,6 +69,7 @@ try {
     const verify = new pg.Client({ connectionString: url });
     await verify.connect();
     try {
+      await verifyMigrationInventory(verify);
       const result = await verify.query('SELECT "createdAt", "before", "actorIdSnapshot" FROM "CrudAuditLog" WHERE id = $1', ["audit-fixture"]);
       const row = result.rows[0];
       if (!row || row.createdAt.toISOString() !== "2026-01-01T00:00:00.000Z" || row.before.password !== "[REDACTED]" || row.before.safe !== "visible" || row.actorIdSnapshot !== "user-fixture") {
