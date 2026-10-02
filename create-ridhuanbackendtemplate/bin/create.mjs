@@ -53,8 +53,10 @@ async function main() {
   try {
     const name = slug(await ask("Project name", basename(target)));
     const appPort = port(await ask("Application port", "3000"));
-    const dbName = slug(await ask("Database name", name.replace(/-/g, "_")));
-    const dbUser = slug(await ask("Database user", name.replace(/-/g, "_")));
+    const dbName = await ask("Database name", name.replace(/[^a-z0-9_]/g, "_"));
+    const dbUser = await ask("Database user", name.replace(/[^a-z0-9_]/g, "_"));
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(dbName) || dbName.length > 63) fail("PostgreSQL database name requires an ASCII SQL identifier, maximum 63 bytes");
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(dbUser) || dbUser.length > 63) fail("PostgreSQL username requires an ASCII SQL identifier, maximum 63 bytes");
     const dbPassword = process.env.RIDHUAN_DB_PASSWORD || randomBytes(24).toString("hex");
     if (!/^[A-Za-z0-9._~-]+$/.test(dbPassword)) fail("Database password must use letters, numbers, dots, underscores, tildes or hyphens");
     const redisChoice = (await ask("Enable Redis cache and distributed rate limit? (y/n)", "n")).toLowerCase();
