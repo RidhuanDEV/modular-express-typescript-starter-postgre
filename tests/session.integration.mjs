@@ -19,7 +19,10 @@ test(
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
       });
-    const email = `lifetime_${randomUUID()}@example.test`;
+    const bcrypt = (await import("bcrypt")).default;
+    const suffix = randomUUID();
+    const email = `lifetime_${suffix}@example.test`;
+    const roleName = `lifetime_${suffix}`;
     const lifetimes = async (raw) => {
       const token = await prisma.refreshToken.findUniqueOrThrow({
         where: { tokenHash: createHash("sha256").update(raw).digest("hex") },
@@ -34,15 +37,15 @@ test(
     };
     const day = 86400000;
     try {
-      assert.equal(
-        (
-          await post("/api/auth/register", {
-            email,
-            password: "strong-pass-123",
-          })
-        ).status,
-        201,
-      );
+      // Own fixtures: CI migrates the database but does not seed the default role.
+      const role = await prisma.role.create({ data: { name: roleName } });
+      await prisma.user.create({
+        data: {
+          email,
+          password: await bcrypt.hash("strong-pass-123", 4),
+          roleId: role.id,
+        },
+      });
       const login = await post("/api/auth/login", {
         email,
         password: "strong-pass-123",
@@ -67,6 +70,7 @@ test(
       server.closeAllConnections();
       await new Promise((resolve) => server.close(resolve));
       await prisma.user.deleteMany({ where: { email } });
+      await prisma.role.deleteMany({ where: { name: roleName } });
       await prisma.$disconnect();
     }
   },
