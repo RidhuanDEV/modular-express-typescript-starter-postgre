@@ -15,7 +15,10 @@ import { lockRefreshFamily } from "../../core/auth/refresh-family.js";
 
 const SALT_ROUNDS = 12;
 const DEFAULT_ROLE = "user";
-const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Idle timeout per token; the family is an absolute cap that rotation never extends.
+const REFRESH_TOKEN_TTL_MS = 30 * DAY_MS;
+const REFRESH_SESSION_TTL_MS = 90 * DAY_MS;
 const repository = new AuthRepository();
 
 function toAuthUserResponse(user: User): AuthUserResponseDto {
@@ -107,7 +110,11 @@ export class AuthService {
       const familyId = randomUUID();
       const expiresAt = new Date(now.getTime() + REFRESH_TOKEN_TTL_MS);
       await tx.refreshFamily.create({
-        data: { id: familyId, userId: user.id, expiresAt },
+        data: {
+          id: familyId,
+          userId: user.id,
+          expiresAt: new Date(now.getTime() + REFRESH_SESSION_TTL_MS),
+        },
       });
       await tx.refreshToken.create({
         data: {
@@ -179,14 +186,15 @@ export class AuthService {
         });
         return undefined;
       }
-      const expiresAt = new Date(now.getTime() + REFRESH_TOKEN_TTL_MS);
+      const expiresAt = new Date(
+        Math.min(
+          now.getTime() + REFRESH_TOKEN_TTL_MS,
+          family.expiresAt.getTime(),
+        ),
+      );
       await tx.refreshToken.update({
         where: { id: session.id },
         data: { revokedAt: now },
-      });
-      await tx.refreshFamily.update({
-        where: { id: family.id },
-        data: { expiresAt },
       });
       await tx.refreshToken.create({
         data: {
