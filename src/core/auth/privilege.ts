@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { env } from "../../config/env.js";
 import { HttpError } from "../errors/http-error.js";
 import { PERMISSION_GROUPS } from "../../constants/permissions.constants.js";
 
@@ -91,9 +92,13 @@ export async function guardSystemPermissionHolders(
   client: Client,
 ): Promise<() => Promise<void>> {
   const names = [...SYSTEM_PERMISSIONS];
-  await client.$queryRaw`
-    SELECT "id" FROM "Permission" WHERE "name" IN (${Prisma.join(names)})
-    FOR UPDATE`;
+  await (env.DB_PROVIDER === "mysql"
+    ? client.$queryRaw`
+      SELECT id FROM \`Permission\` WHERE name IN (${Prisma.join(names)})
+      FOR UPDATE`
+    : client.$queryRaw`
+      SELECT "id" FROM "Permission" WHERE "name" IN (${Prisma.join(names)})
+      FOR UPDATE`);
   const unheld = async () =>
     (
       await client.permission.findMany({
